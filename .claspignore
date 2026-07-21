@@ -1,0 +1,8 @@
+# Solo estos archivos van a Apps Script; todo lo demás es local
+# (el preview/ es Node y rompería el servidor: "require is not defined")
+**/**
+!Code.js
+!index.html
+!styles.html
+!app.html
+!appsscript.json

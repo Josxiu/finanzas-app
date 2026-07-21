@@ -1,0 +1,733 @@
+<style>
+  /* =====================================================================
+     Sistema de diseño v9 — TODO valor visual sale de estos tokens.
+     Escala de espaciado: 4/8/12/16/24/32 (--e1..--e6).
+     Dos radios: tarjeta (--radio) y chip/input (--radio-chip); las píldoras
+     (toast, FAB) usan 999px. Tres sombras (--sombra-1/2/3). Un solo azul de
+     acento; verde/rojo/ámbar SOLO para dinero y semáforos.
+     ===================================================================== */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* El atributo `hidden` solo lo aplica la hoja de estilos del navegador
+     (`[hidden]{display:none}`), y CUALQUIER `display` de autor le gana: por eso
+     .mini{display:block} dejaba visible el equivalente en dólares en todas las
+     cuentas. Esta regla lo zanja de una vez para todo el documento. */
+  [hidden] { display: none !important; }
+
+  :root {
+    /* Espaciado */
+    --e1: 4px; --e2: 8px; --e3: 12px; --e4: 16px; --e5: 24px; --e6: 32px;
+    /* Radios */
+    --radio: 16px;        /* tarjetas y modales */
+    --radio-chip: 10px;   /* chips, inputs, botones pequeños */
+    /* Tipografía (6 tamaños; los inputs van en 16px para que iOS no haga zoom) */
+    --t-titulo: 22px;
+    --t-seccion: 12px;    /* etiquetas de sección, MAYÚSCULAS */
+    --t-cuerpo: 15px;
+    --t-caption: 12.5px;  /* subtextos, notas */
+    --t-cifra: 17px;      /* saldos en tarjetas */
+    --t-cifra-grande: 32px;
+
+    /* Paleta clara: fondo neutro, 3 niveles de elevación (fondo/tarjeta/suave) */
+    --fondo: #F7F8FA;
+    --tarjeta: #FFFFFF;
+    --suave: #F2F4F7;
+    --primario: #1A73E8;      /* fondos de acento (botón principal, patrimonio) */
+    --acento: #1A73E8;        /* textos de acento (títulos, nav activa) */
+    --acento-suave: #E8F0FE;
+    --texto: #1D2129;
+    --texto-suave: #5D6673;
+    --verde: #188038;
+    --rojo: #C5221F;
+    --ambar: #F9AB00;         /* semáforo de presupuestos (antes hardcodeado) */
+    --borde: #E4E7EC;
+    --borde-tarjeta: #EEF0F3; /* borde sutil de tarjetas (en oscuro es el separador real) */
+    --divisor: #EEF0F4;
+    --peligro-fondo: #FCE8E6;
+    --placeholder: #C6CBD3;
+    --spinner: #D2E3FC;
+    --velo: rgba(247,248,250,.7);
+    --overlay: rgba(29,33,41,.5);
+    --toast: #1D2129;
+    --toast-texto: #fff;
+    --sombra-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.07);
+    --sombra-2: 0 2px 4px rgba(16,24,40,.05), 0 6px 16px rgba(16,24,40,.10);
+    --sombra-3: 0 4px 8px rgba(16,24,40,.06), 0 14px 36px rgba(16,24,40,.18);
+    color-scheme: light;
+  }
+  /* Modo oscuro: mismos roles, otra paleta. Los colores de cuenta (de la hoja)
+     no cambian. Las sombras casi desaparecen: separan los bordes. */
+  html[data-tema="oscuro"] {
+    --fondo: #14181D;
+    --tarjeta: #1E242B;
+    --suave: #262D35;
+    --acento: #8AB4F8;
+    --acento-suave: #1E3A5F;
+    --texto: #E8EAED;
+    --texto-suave: #9AA4B2;
+    --verde: #6DD58C;
+    --rojo: #F28B82;
+    --ambar: #FDD663;
+    --borde: #39414B;
+    --borde-tarjeta: #2C333C;
+    --divisor: #2A313A;
+    --peligro-fondo: #3A2422;
+    --placeholder: #4A525C;
+    --spinner: #2E4562;
+    --velo: rgba(20,24,29,.7);
+    --overlay: rgba(0,0,0,.6);
+    --toast: #E8EAED;
+    --toast-texto: #1D2129;
+    --sombra-1: 0 1px 2px rgba(0,0,0,.30);
+    --sombra-2: 0 2px 6px rgba(0,0,0,.35);
+    --sombra-3: 0 10px 30px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    font-size: var(--t-cuerpo);
+    background: var(--fondo);
+    color: var(--texto);
+    min-height: 100vh;
+  }
+  /* En PC: contenedor centrado tipo teléfono */
+  .contenedor {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: var(--e3) 14px calc(84px + env(safe-area-inset-bottom));
+  }
+
+  /* Iconos SVG (sprite en index.html). El color lo hereda de currentColor. */
+  .ic {
+    width: 20px; height: 20px; flex: none;
+    fill: none; stroke: currentColor; stroke-width: 2;
+    stroke-linecap: round; stroke-linejoin: round;
+  }
+  .ic-mini { width: 16px; height: 16px; }
+  .ic-nav { width: 22px; height: 22px; stroke-width: 1.8; }
+
+  /* Transiciones cortas y uniformes (los que tienen animación propia, aparte) */
+  .chip, .btn-tipo, .btn-mini, .btn-secundario, .btn-principal, .btn-peligro,
+  .btn-icono, .nav-btn, .tarjeta-cuenta, .mov, .fila-cat, .swatch, .enlace {
+    transition: background-color .16s ease, border-color .16s ease, color .16s ease,
+                box-shadow .16s ease, transform .16s ease, opacity .16s ease;
+  }
+  .chip:active, .btn-tipo:active, .btn-mini:active, .btn-secundario:active,
+  .btn-principal:active, .btn-icono:active, .mov:active { transform: scale(.97); }
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 2px var(--e3);
+  }
+  h1 { font-size: var(--t-titulo); color: var(--acento); font-weight: 700; }
+  .header-botones { display: flex; gap: var(--e2); }
+  .btn-icono {
+    width: 44px; height: 44px; border: 1px solid var(--borde-tarjeta); border-radius: 50%;
+    background: var(--tarjeta); box-shadow: var(--sombra-1);
+    color: var(--texto-suave); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .btn-icono:hover { color: var(--acento); }
+  #btn-refrescar:active .ic { transform: rotate(180deg); transition: transform .3s; }
+
+  .vista { display: none; }
+  /* Cambio de pestaña con una entrada suave (el display real de Registrar,
+     flex, lo fija su propia regla más específica; la animación aplica igual). */
+  .vista.activa { display: block; animation: aparecer .2s ease both; }
+  @keyframes aparecer { from { opacity: 0; transform: translateY(5px); } }
+
+  /* Registrar: en móvil las .col se disuelven y `order` mantiene el orden
+     original (tipos, monto, cuenta, destino, categoría, fecha, guardar).
+     En PC vuelven a ser dos columnas reales (ver el bloque de escritorio). */
+  #vista-registrar.activa { display: flex; flex-direction: column; }
+  .col { display: contents; }
+  #reg-volver { order: 0; }
+  #grupo-tipos { order: 1; }
+  #bloque-monto { order: 2; }
+  #bloque-cuenta { order: 3; }
+  #bloque-transfer { order: 3; } /* reemplaza a bloque-cuenta en transferencias */
+  #bloque-valor-destino { order: 4; }
+  #bloque-categoria { order: 5; }
+  #bloque-fecha { order: 6; }
+  #btn-guardar { order: 7; }
+
+  .tarjeta {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: 14px var(--e4); margin-bottom: var(--e3);
+  }
+  .etiqueta {
+    display: block; font-size: var(--t-seccion); font-weight: 600;
+    color: var(--texto-suave); text-transform: uppercase;
+    letter-spacing: .4px; margin-bottom: var(--e2);
+  }
+  .mini { font-size: var(--t-seccion); color: var(--texto-suave); display: block; }
+  /* Equivalente en moneda base de una cuenta en otra moneda: secundario pero
+     legible (el saldo nativo manda, pero el usuario piensa en su moneda base). */
+  .equiv { font-size: 13.5px; font-weight: 500; color: var(--texto); display: block; }
+  /* Código de moneda discreto junto a una cifra clave ("$ 2.544.390 COP") */
+  .cod-moneda { font-size: .55em; font-weight: 600; color: var(--texto-suave); margin-left: 2px; }
+  .patrimonio .cod-moneda { color: #D2E3FC; }
+  .verde { color: var(--verde); }
+  .rojo { color: var(--rojo); }
+
+  /* ============ Registrar ============ */
+  .grupo-tipos {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: var(--e2); margin-bottom: var(--e3);
+  }
+  .btn-tipo {
+    min-height: 64px; border: 1.5px solid var(--borde-tarjeta); border-radius: var(--radio);
+    background: var(--tarjeta); box-shadow: var(--sombra-1); cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: var(--e1);
+    color: var(--texto-suave);
+  }
+  .btn-tipo span { font-size: 11.5px; font-weight: 600; }
+  .btn-tipo.activa { border-color: var(--primario); color: var(--acento); background: var(--acento-suave); }
+
+  .campo-monto {
+    display: flex; align-items: center; gap: var(--e2);
+    font-size: 34px; font-weight: 700; color: var(--texto);
+    font-variant-numeric: tabular-nums;
+  }
+  .campo-monto span { color: var(--texto-suave); }
+  /* Por id: si no, la regla general de input[type=text] de más abajo les gana */
+  #inp-monto, #aj-real, #si-valor, #mes-ajuste-valor, #nc-saldo {
+    flex: 1; border: none; outline: none; font: inherit;
+    min-width: 0; background: transparent; padding: 0; border-radius: 0;
+  }
+  #inp-monto::placeholder, #aj-real::placeholder, #si-valor::placeholder,
+  #mes-ajuste-valor::placeholder, #nc-saldo::placeholder { color: var(--placeholder); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: var(--e2); }
+  .chip {
+    min-height: 48px; padding: var(--e2) 14px; border-radius: var(--radio-chip);
+    border: 1.5px solid var(--borde); background: var(--tarjeta); cursor: pointer;
+    font-size: var(--t-cuerpo); display: inline-flex; align-items: center; gap: 6px;
+    color: var(--texto);
+  }
+  .chip .punto {
+    width: 12px; height: 12px; border-radius: 50%; display: inline-block;
+    background: var(--color-cuenta, var(--borde));
+  }
+  .chip.activa {
+    border-color: var(--color-cuenta, var(--primario));
+    background: color-mix(in srgb, var(--color-cuenta, var(--primario)) 14%, var(--tarjeta));
+    font-weight: 600;
+  }
+
+  .fila-doble { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3); }
+  input[type="date"], input[type="text"], input[type="search"], select {
+    width: 100%; min-height: 48px; padding: var(--e2) var(--e3);
+    border: 1.5px solid var(--borde); border-radius: var(--radio-chip);
+    font: inherit; font-size: 16px; background: var(--tarjeta); color: var(--texto);
+  }
+  input:focus-visible, select:focus-visible { outline: 2px solid var(--acento); outline-offset: -1px; }
+
+  /* Buscador con icono dentro (el icono vive en index.html) */
+  .campo-buscar { position: relative; }
+  .campo-buscar .ic {
+    position: absolute; left: var(--e3); top: 50%; transform: translateY(-50%);
+    color: var(--texto-suave); pointer-events: none; width: 18px; height: 18px;
+  }
+  .campo-buscar input { padding-left: 38px; }
+
+  .btn-principal {
+    width: 100%; min-height: 56px; border: none; border-radius: var(--radio);
+    background: var(--primario); color: #fff; font-size: 17px; font-weight: 700;
+    cursor: pointer; box-shadow: var(--sombra-1); margin-top: var(--e1);
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--e2);
+  }
+  .btn-principal:disabled { opacity: .6; }
+  .btn-principal.compacto { width: auto; padding: 0 20px; min-height: 48px; font-size: 16px; }
+  .btn-secundario {
+    min-height: 48px; padding: 0 var(--e4); border: 1.5px solid var(--borde);
+    border-radius: var(--radio-chip); background: var(--tarjeta); color: var(--texto);
+    font-size: 16px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-peligro {
+    min-height: 48px; padding: 0 14px; border: none; border-radius: var(--radio-chip);
+    background: var(--peligro-fondo); color: var(--rojo); font-size: var(--t-cuerpo);
+    font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .btn-mini {
+    min-height: 36px; padding: var(--e1) var(--e3); border-radius: var(--radio-chip);
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto);
+    font-size: 13.5px; cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .btn-mini:hover { border-color: var(--texto-suave); }
+  .btn-mini .ic { width: 15px; height: 15px; color: var(--texto-suave); }
+
+  /* Paleta de colores del modal de cuenta nueva */
+  .paleta { display: flex; flex-wrap: wrap; gap: 10px; }
+  .swatch {
+    width: 38px; height: 38px; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; padding: 0;
+  }
+  .swatch.activa { border-color: var(--texto); }
+
+  /* ============ Panel ============ */
+  .patrimonio { background: var(--primario); color: #fff; border-color: transparent; }
+  .patrimonio .etiqueta { color: #D2E3FC; }
+  .valor-grande { font-size: var(--t-cifra-grande); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .patrimonio-desglose { font-size: 13px; color: #D2E3FC; margin-top: var(--e1); font-variant-numeric: tabular-nums; }
+
+  /* Encabezado de sección: etiqueta a la izquierda, acción a la derecha */
+  .titulo-seccion {
+    display: flex; align-items: center; justify-content: space-between;
+    margin: var(--e1) var(--e1) var(--e2);
+  }
+  .titulo-seccion .etiqueta { margin-bottom: 0; }
+
+  /* Delta vs el mes pasado: texto discreto, el color ya dice si es bueno o malo */
+  .chip-delta {
+    display: inline-block; font-size: 11px; font-weight: 600; margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip-delta.sube { color: var(--rojo); }
+  .chip-delta.baja { color: var(--verde); }
+
+  /* Fila etiqueta + botón (ej: "Categoría  [Editar]") */
+  .etiqueta-fila { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--e2); }
+  .etiqueta-fila .etiqueta { margin-bottom: 0; }
+
+  .grid-cuentas { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: var(--e3); }
+  .tarjeta-cuenta {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: var(--e3) 14px; border-top: 4px solid var(--color-cuenta, var(--borde));
+    cursor: pointer; position: relative;
+  }
+  .tarjeta-cuenta.agregar {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    color: var(--texto-suave); font-weight: 600; font-size: 14px;
+    border-top-color: var(--borde); min-height: 64px;
+  }
+  .tarjeta-cuenta.agregar .ic { width: 16px; height: 16px; }
+  .tarjeta-cuenta .nombre {
+    font-size: 13px; font-weight: 600; color: var(--texto-suave);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tarjeta-cuenta .saldo { font-size: var(--t-cifra); font-weight: 700; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .tarjeta-cuenta .mini { margin-top: 2px; }
+  /* Sparkline de 30 días dentro de la tarjeta */
+  .spark-wrap { margin-top: var(--e2); }
+  .spark { display: block; width: 100%; height: 26px; opacity: .8; }
+  .tarjeta-cuenta:hover .spark { opacity: 1; }
+  @media (hover: hover) {
+    .tarjeta-cuenta:hover { box-shadow: var(--sombra-2); transform: translateY(-1px); }
+  }
+
+  /* Flechas del modo ordenar */
+  .btn-orden {
+    position: absolute; bottom: var(--e2); left: var(--e2);
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto);
+    cursor: pointer; font-size: 13px;
+  }
+  .btn-orden.der { left: auto; right: var(--e2); }
+  .tarjeta-cuenta[draggable="true"] { cursor: grab; padding-bottom: 48px; }
+  .tarjeta-cuenta:active { transform: scale(.98); }
+
+  /* 4 datos (Empezó con / Ingresos / Gastos / Neto): 2x2 en móvil */
+  .resumen-mes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px var(--e2); text-align: center; }
+  .resumen-mes b { font-size: 15.5px; font-variant-numeric: tabular-nums; }
+
+  /* Selector de rango de las gráficas */
+  .rango-graficas { display: flex; gap: var(--e2); margin-bottom: var(--e3); flex-wrap: wrap; }
+  .rango-graficas .chip { min-height: 40px; padding: 6px 14px; font-size: 14px; }
+  .rango-graficas .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave);
+    color: var(--acento); font-weight: 600;
+  }
+
+  /* Chips de vista dentro de cada tarjeta de gráfica (dona/lista, I vs G/neto) */
+  .chips-grafica { display: flex; gap: 6px; flex-wrap: wrap; align-items: stretch; margin-bottom: 10px; }
+  .chips-grafica .chip { min-height: 32px; padding: var(--e1) var(--e3); font-size: 13px; }
+  .chips-grafica .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave);
+    color: var(--acento); font-weight: 600;
+  }
+  /* Lista "top categorías" (vista alternativa a la dona) */
+  .lista-cats { display: flex; flex-direction: column; gap: var(--e3); padding: 6px 0 2px; }
+  .fila-cat {
+    border: none; background: none; padding: 0; cursor: pointer;
+    text-align: left; font: inherit; color: var(--texto); width: 100%;
+  }
+  .fila-cat-info { display: flex; justify-content: space-between; gap: var(--e2); font-size: 14px; margin-bottom: var(--e1); }
+  .fila-cat-info .monto { color: var(--texto-suave); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fila-cat .barra { height: 8px; border-radius: 4px; background: var(--suave); overflow: hidden; }
+  .fila-cat .relleno { height: 100%; border-radius: 4px; transition: width .3s ease; }
+
+  /* Presupuestos: mismo esqueleto que .fila-cat, con semáforo en la barra */
+  .fila-presup .relleno.ok { background: var(--verde); }
+  .fila-presup .relleno.alerta { background: var(--ambar); }
+  .fila-presup .relleno.pasado { background: var(--rojo); }
+
+  /* Proyección de fin de mes (bajo los 4 datos de "Este mes") */
+  .proyeccion {
+    font-size: var(--t-caption); color: var(--texto-suave); text-align: center;
+    margin-top: 10px; padding-top: var(--e2); border-top: 1px solid var(--divisor);
+  }
+
+  .lienzo { position: relative; height: 220px; }
+  .lienzo.alto { height: 260px; }
+
+  /* Estados vacíos: icono + una frase (+ acción opcional), centrados */
+  .mensaje-vacio {
+    text-align: center; color: var(--texto-suave); padding: var(--e5) 0;
+    font-size: 14px;
+  }
+  .mensaje-vacio .ic { width: 28px; height: 28px; stroke-width: 1.5; display: block; margin: 0 auto var(--e2); opacity: .6; }
+  .mensaje-vacio .btn-mini { margin-top: var(--e3); }
+
+  /* Esqueletos de carga inicial: bloques con brillo que respiran */
+  .esqueleto {
+    display: inline-block; border-radius: 6px; min-height: 1em;
+    background: linear-gradient(100deg, var(--suave) 40%, var(--divisor) 50%, var(--suave) 60%);
+    background-size: 200% 100%;
+    animation: brillar 1.2s ease-in-out infinite;
+    color: transparent !important; user-select: none;
+  }
+  @keyframes brillar { from { background-position: 120% 0; } to { background-position: -80% 0; } }
+  .patrimonio .esqueleto { background: rgba(255,255,255,.25); animation: none; }
+
+  /* ============ Evolución ============ */
+  /* Tarjetas de insight (mejor/peor mes, promedio, ahorro) */
+  .insights { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: var(--e3); }
+  .insight {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: var(--e3) 14px;
+  }
+  .insight .k { font-size: 11.5px; font-weight: 600; color: var(--texto-suave);
+    text-transform: uppercase; letter-spacing: .3px; }
+  .insight .v { font-size: var(--t-cifra); font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .insight .s { font-size: var(--t-seccion); color: var(--texto-suave); margin-top: 1px; }
+
+  /* Tabla mes a mes */
+  .tabla-scroll { overflow-x: auto; }
+  .tabla-meses { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+  .tabla-meses th, .tabla-meses td { padding: 7px var(--e2); text-align: right; white-space: nowrap; }
+  .tabla-meses th:first-child, .tabla-meses td:first-child { text-align: left; }
+  .tabla-meses thead th {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .3px;
+    color: var(--texto-suave); border-bottom: 1px solid var(--divisor);
+  }
+  .tabla-meses tbody tr { border-bottom: 1px solid var(--divisor); }
+  .tabla-meses tbody tr:last-child { border-bottom: none; }
+  .tabla-meses .mes-actual td { font-weight: 700; }
+
+  /* ============ Detalle de una cuenta ============ */
+  #cd-volver { margin-bottom: 10px; }
+  .cuenta-hero { border-top: 6px solid var(--color-cuenta, var(--primario)); }
+  .cuenta-hero .valor-grande { font-variant-numeric: tabular-nums; }
+  .cuenta-hero .mini, .cuenta-hero .equiv { margin-top: 3px; }
+  .acciones-cuenta { display: flex; gap: var(--e2); flex-wrap: wrap; margin-bottom: var(--e3); }
+  .acciones-cuenta .btn-mini { min-height: 44px; }
+  .resumen-mes.dos { grid-template-columns: repeat(2, 1fr); }
+
+  /* ============ Historial ============ */
+  .filtros { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e2); padding: 10px var(--e3); }
+  .filtros select { min-height: 44px; font-size: 14px; }
+  /* Buscador y resumen ocupan la fila completa del grid de filtros */
+  .filtros .campo-buscar { grid-column: 1 / -1; }
+  #fil-buscar { min-height: 44px; font-size: 16px; }
+  .hist-resumen {
+    grid-column: 1 / -1; font-size: 13px; color: var(--texto-suave);
+    text-align: center; padding-top: 2px; font-variant-numeric: tabular-nums;
+  }
+
+  .dia-titulo {
+    font-size: var(--t-caption); font-weight: 700; color: var(--texto-suave);
+    margin: 14px var(--e1) 6px; text-transform: uppercase; letter-spacing: .4px;
+  }
+  .mov {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: 10px 14px; margin-bottom: 6px; display: flex; align-items: center;
+    gap: var(--e3); cursor: pointer; min-height: 56px;
+  }
+  .mov .icono {
+    font-size: 20px; width: 36px; height: 36px; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--suave); border-radius: 50%;
+  }
+  .mov .icono .ic { width: 18px; height: 18px; color: var(--texto-suave); }
+  .mov .centro { flex: 1; min-width: 0; }
+  .mov .desc { font-size: var(--t-cuerpo); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mov .sub { font-size: var(--t-caption); color: var(--texto-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mov .monto { font-weight: 700; font-size: var(--t-cuerpo); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* ============ Navegación inferior ============ */
+  .nav-inferior {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: center; gap: 0;
+    background: var(--tarjeta); border-top: 1px solid var(--borde-tarjeta);
+    box-shadow: 0 -1px 6px rgba(0,0,0,.06);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-btn {
+    flex: 1; max-width: 160px; min-height: 60px; border: none; background: none;
+    color: var(--texto-suave); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  }
+  .nav-btn span { font-size: 11.5px; font-weight: 600; }
+  .nav-btn.activa { color: var(--acento); }
+  .nav-btn.activa .ic-nav { stroke-width: 2.2; }
+  .marca { display: none; } /* solo en PC: el título vive en el sidebar */
+
+  /* Registrar: botón flotante (+) en móvil. Fijo (fuera del flujo de la barra),
+     por eso la barra de abajo solo reparte los 4 nav-btn. En PC pasa a ser un
+     botón del sidebar (ver el bloque de escritorio). */
+  .nav-registrar {
+    position: fixed; right: var(--e4);
+    bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 25;
+    width: 56px; height: 56px; border-radius: 50%; border: none;
+    background: var(--primario); color: #fff; cursor: pointer;
+    box-shadow: var(--sombra-2);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .nav-registrar .ic-nav { width: 26px; height: 26px; stroke-width: 2.4; }
+  .nav-registrar span { display: none; }
+  .nav-registrar:active { transform: scale(.94); }
+  /* En Registrar el CTA es Guardar: el FAB estorba, se esconde (solo móvil) */
+  @media (max-width: 899px) {
+    body.en-registrar .nav-registrar { display: none; }
+  }
+  #reg-volver { margin-bottom: var(--e3); align-self: flex-start; }
+
+  /* ============ Selector visual de transferencia (Origen → Destino) ============ */
+  .transfer-sel { display: flex; align-items: stretch; gap: var(--e2); }
+  .transfer-card {
+    flex: 1; min-width: 0; text-align: left; cursor: pointer;
+    background: var(--suave); border: 1.5px solid transparent; border-radius: var(--radio-chip);
+    padding: 10px var(--e3); display: flex; flex-direction: column; gap: 3px;
+    color: var(--texto); font: inherit; min-height: 60px; justify-content: center;
+  }
+  .transfer-card.activa { border-color: var(--primario); background: var(--acento-suave); }
+  .tc-rol { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px; color: var(--texto-suave); }
+  .tc-cuenta { display: inline-flex; align-items: center; gap: 6px; font-size: var(--t-cuerpo); font-weight: 600; }
+  .tc-cuenta .punto { width: 11px; height: 11px; border-radius: 50%; background: var(--color-cuenta, var(--borde)); flex: none; }
+  .tc-cuenta span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transfer-swap {
+    flex: none; width: 40px; align-self: center; height: 40px; border-radius: 50%;
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto-suave);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .transfer-swap:hover { color: var(--acento); border-color: var(--acento); }
+  .transfer-swap:active { transform: rotate(180deg); }
+
+  /* Chips de categoría/cuenta en Registrar: scroll horizontal en una fila
+     (sin envolverse en 3+ filas). El scrollbar se oculta pero el gesto queda. */
+  #chips-categoria, #chips-cuenta, #chips-transfer {
+    flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--e1);
+    scrollbar-width: none; -webkit-overflow-scrolling: touch;
+  }
+  #chips-categoria::-webkit-scrollbar, #chips-cuenta::-webkit-scrollbar,
+  #chips-transfer::-webkit-scrollbar { display: none; }
+  #chips-categoria .chip, #chips-cuenta .chip, #chips-transfer .chip { flex: none; }
+
+  /* ============ Ajustes ============ */
+  .grupo-ajustes { margin-bottom: var(--e5); }
+  .fila-ajuste {
+    display: flex; align-items: center; gap: var(--e3);
+    padding: var(--e2) 0; color: var(--texto); text-decoration: none;
+  }
+  .fila-ajuste + .fila-ajuste { border-top: 1px solid var(--divisor); }
+  .fila-ajuste .fa-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .fila-ajuste .fa-txt b { font-size: var(--t-cuerpo); font-weight: 600; }
+  .fila-ajuste .ic { color: var(--texto-suave); }
+  a.fila-ajuste:hover .ic { color: var(--acento); }
+  #aj-tema .chip.activa, #aj-base-monedas .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave); color: var(--acento); font-weight: 600;
+  }
+  /* Tabla de tasas en Ajustes */
+  .tasa-fila { display: flex; align-items: center; gap: var(--e2); padding: 10px 0; border-bottom: 1px solid var(--divisor); }
+  .tasa-fila:last-child { border-bottom: none; }
+  .tasa-fila .tf-par { font-weight: 600; width: 44px; flex: none; }
+  .tasa-fila .tf-val { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+  .tasa-fila .tf-badge {
+    font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+    padding: 2px 8px; border-radius: 999px; background: var(--suave); color: var(--texto-suave); white-space: nowrap;
+  }
+  .tasa-fila .tf-badge.manual { background: color-mix(in srgb, var(--ambar) 22%, var(--tarjeta)); color: #9a6a00; }
+  .tasa-fila .tf-badge.sintasa { background: var(--peligro-fondo); color: var(--rojo); }
+  html[data-tema="oscuro"] .tasa-fila .tf-badge.manual { color: var(--ambar); }
+  .tasa-fila .btn-mini { min-height: 34px; }
+  /* Fila de cuenta/categoría en Ajustes (tocar = editar) */
+  .aj-item {
+    display: flex; align-items: center; gap: var(--e3); width: 100%;
+    padding: 10px 0; border-bottom: 1px solid var(--divisor);
+    background: none; border-left: none; border-right: none; border-top: none;
+    font: inherit; color: var(--texto); text-align: left; cursor: pointer;
+  }
+  .aj-item:last-child { border-bottom: none; }
+  .aj-item .punto { width: 12px; height: 12px; border-radius: 50%; background: var(--color-cuenta, var(--borde)); flex: none; }
+  .aj-item .ai-emoji { font-size: 20px; width: 24px; text-align: center; flex: none; }
+  .aj-item .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .aj-item .ai-txt b { font-size: var(--t-cuerpo); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aj-item .ai-saldo { font-size: 13px; color: var(--texto-suave); font-variant-numeric: tabular-nums; }
+  .aj-item.oculta { opacity: .5; }
+  .aj-item .ic { color: var(--texto-suave); flex: none; }
+  /* Picker de emoji (grilla curada) */
+  .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 4px; }
+  .emoji-grid button {
+    aspect-ratio: 1; border: 1.5px solid transparent; border-radius: var(--radio-chip);
+    background: var(--suave); font-size: 20px; cursor: pointer; padding: 0;
+  }
+  .emoji-grid button.activa { border-color: var(--primario); background: var(--acento-suave); }
+
+  /* ============ Modal ============ */
+  .modal-fondo {
+    position: fixed; inset: 0; z-index: 30; background: var(--overlay);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .modal {
+    background: var(--tarjeta); border-radius: var(--radio) var(--radio) 0 0;
+    width: 100%; max-width: 480px;
+    padding: 20px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height: 88vh; overflow-y: auto;
+    box-shadow: var(--sombra-3);
+    animation: subirModal .22s ease-out;
+  }
+  @keyframes subirModal { from { transform: translateY(24px); opacity: .6; } }
+  .modal h2 { font-size: 18px; color: var(--acento); margin-bottom: 14px; }
+  .modal .etiqueta { margin-top: var(--e3); }
+  .modal-botones { display: flex; gap: 10px; margin-top: 18px; justify-content: flex-end; }
+  .modal-botones .btn-peligro { margin-right: auto; }
+
+  /* ============ Ajuste de saldo ============ */
+  .ayuda { font-size: 13px; color: var(--texto-suave); line-height: 1.45; margin: 6px 0; }
+  .ayuda:empty { display: none; }
+  .ajuste-fila {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0; border-bottom: 1px solid var(--divisor); font-size: 14px;
+  }
+  .ajuste-fila span { color: var(--texto-suave); }
+  .ajuste-fila b { font-size: 16px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .campo-monto.compacto { font-size: 24px; padding: 6px 0; }
+
+  /* Cambiar saldo inicial (sección plegada del modal de cuadre) */
+  .seccion-si { margin-top: var(--e4); border-top: 1px solid var(--divisor); padding-top: 10px; }
+  .enlace {
+    border: none; background: none; color: var(--acento); cursor: pointer;
+    font: inherit; font-size: 14.5px; font-weight: 600; padding: var(--e2) 0; min-height: 44px;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+
+  /* ============ Toast y carga ============ */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 40;
+    background: var(--toast); color: var(--toast-texto); padding: var(--e3) 20px; border-radius: 999px;
+    font-size: var(--t-cuerpo); box-shadow: var(--sombra-2); max-width: 90vw; text-align: center;
+    animation: subir .25s ease-out;
+  }
+  .toast.error { background: var(--rojo); color: #fff; }
+  .toast.exito { background: var(--verde); color: #fff; }
+  html[data-tema="oscuro"] .toast.error, html[data-tema="oscuro"] .toast.exito { color: #1D2129; }
+  @keyframes subir { from { opacity: 0; transform: translate(-50%, 16px); } }
+
+  .cargando {
+    position: fixed; inset: 0; z-index: 50; background: var(--velo);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: 4px solid var(--spinner); border-top-color: var(--primario);
+    animation: girar .8s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+
+  /* =====================================================================
+     ESCRITORIO (>= 900px). Todo lo de aquí para abajo NO toca el celular:
+     la barra de abajo pasa a ser un menú lateral y el contenido se reparte
+     en columnas para aprovechar el ancho.
+     ===================================================================== */
+  @media (min-width: 900px) {
+
+    /* --- Menú lateral --- */
+    .nav-inferior {
+      top: 0; bottom: 0; right: auto; width: 220px;
+      flex-direction: column; justify-content: flex-start; gap: var(--e1);
+      padding: 18px var(--e3); border-top: none; border-right: 1px solid var(--borde-tarjeta);
+      box-shadow: none;
+    }
+    .marca {
+      display: flex; align-items: center; gap: var(--e2);
+      font-size: 18px; font-weight: 700; color: var(--acento);
+      padding: var(--e2) var(--e3) 20px;
+    }
+    /* El FAB deja de flotar: pasa a ser el botón primario del sidebar, arriba */
+    .nav-registrar {
+      position: static; width: 100%; height: auto; border-radius: var(--radio-chip);
+      min-height: 48px; margin-bottom: var(--e4); padding: 0 var(--e3);
+      justify-content: flex-start; gap: var(--e3); box-shadow: none;
+    }
+    .nav-registrar .ic-nav { width: 22px; height: 22px; }
+    .nav-registrar span { display: inline; font-size: 14.5px; font-weight: 700; }
+    .nav-btn {
+      flex: none; max-width: none; width: 100%; min-height: 48px;
+      flex-direction: row; justify-content: flex-start; gap: var(--e3);
+      padding: 0 var(--e3); border-radius: var(--radio-chip);
+    }
+    .nav-btn span { font-size: 14.5px; }
+    .nav-btn:hover { background: var(--suave); }
+    .nav-btn.activa { background: var(--acento-suave); }
+
+    /* --- Contenido --- */
+    .contenedor {
+      margin-left: 220px; max-width: 1100px;
+      padding: 20px 28px 40px;
+    }
+    header { padding: var(--e1) 2px 18px; }
+    h1 { font-size: 26px; }
+
+    /* --- Registrar: "Volver" arriba a lo ancho y luego dos columnas ---
+       #reg-volver es un hijo directo del grid: sin grid-column ocuparía una
+       celda y descuadraba las columnas (col1 se salía a la derecha). */
+    #vista-registrar.activa {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 0 20px; align-items: start;
+    }
+    #reg-volver { grid-column: 1 / -1; justify-self: start; margin-bottom: var(--e4); }
+    /* min-width:0 — sin esto los chips en scroll horizontal (nowrap) inflan el
+       ancho mínimo del track y la columna se desborda a la derecha. */
+    .col { display: flex; flex-direction: column; min-width: 0; } /* deja de disolverse */
+    #btn-guardar { margin-top: var(--e2); }
+
+    /* --- Resumen --- */
+    .valor-grande { font-size: 40px; }
+    .grid-cuentas { grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); }
+    .tarjeta-cuenta .saldo { font-size: 19px; }
+    .resumen-mes { grid-template-columns: repeat(4, 1fr); }
+    .resumen-mes.dos { grid-template-columns: repeat(2, 1fr); }
+    .insights { grid-template-columns: repeat(4, 1fr); }
+    .lienzo.alto { height: 320px; }
+    .graficas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e4); }
+    /* min-width:0 — sin esto el canvas de Chart.js (300px propios) impide que la
+       columna encoja y la página termina con scroll horizontal. */
+    .graficas .tarjeta { margin-bottom: 0; min-width: 0; }
+    .lienzo { height: 300px; min-width: 0; }
+    .resumen-mes b { font-size: 19px; }
+
+    /* --- Historial --- */
+    .filtros { grid-template-columns: repeat(4, 1fr); }
+    .mov { padding: var(--e3) var(--e4); }
+    .mov .desc { font-size: 15.5px; }
+
+    /* --- Modal centrado, no pegado abajo --- */
+    .modal-fondo { align-items: center; }
+    .modal { border-radius: var(--radio); max-width: 460px; padding: var(--e5); }
+    @keyframes subirModal { from { transform: translateY(12px) scale(.98); opacity: .6; } }
+  }
+</style>

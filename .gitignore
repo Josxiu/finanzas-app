@@ -1,0 +1,4 @@
+__pycache__/
+*.pyc
+preview/preview.html
+preview/cap_*.png

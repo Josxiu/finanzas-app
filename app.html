@@ -1,0 +1,2787 @@
+<script>
+/* =====================================================================
+   Finanzas App — Lógica del cliente
+   Todo el estado vive en `datos` (lo que devuelve getDatos del servidor).
+   ===================================================================== */
+
+var datos = null;          // última respuesta del servidor
+var tipoSel = 'Gasto';     // tipo elegido en Registrar
+var cuentaSel = '';        // cuenta origen elegida
+var destinoSel = '';       // cuenta destino elegida
+var transferLado = 'origen'; // qué tarjeta del selector de transferencia se está eligiendo
+var catSel = '';           // categoría elegida
+var presupExpandido = false; // Panel: ¿se ven TODOS los presupuestos o solo el top 3?
+var movEditando = null;    // movimiento abierto en el modal
+var cuentaAjustando = null; // cuenta abierta en el modal de ajuste
+var mesAbierto = null;      // mes abierto en el modal de detalle
+var ajusteMesCuenta = null; // cuenta elegida para ajustar dentro de ese mes
+var ajusteMesModo = 'mov';  // 'mov' = movimiento de ajuste | 'si' = editar saldo inicial
+var colorSel = '#1A73E8';   // color elegido en el modal de cuenta nueva
+var ecColorSel = '#1A73E8'; // color elegido al editar una cuenta existente
+var ncMonedaSel = 'COP';    // moneda elegida en el modal de cuenta nueva
+var ecMonedaSel = 'COP';    // moneda elegida al editar una cuenta existente
+var chartDona = null, chartBarras = null, chartEvolucion = null;
+// Rango de las gráficas en meses (1 = solo el mes actual); se recuerda entre sesiones
+var rangoSel = Number(localStorage.getItem('rangoGraficas')) || 6;
+if ([1, 3, 6, 12].indexOf(rangoSel) < 0) rangoSel = 6;
+// Rango propio de la línea grande de Evolución
+var rangoEvol = Number(localStorage.getItem('rangoEvol')) || 6;
+if ([1, 3, 6, 12].indexOf(rangoEvol) < 0) rangoEvol = 6;
+
+// Vistas de las gráficas del Panel (estilo Whisper Money); también se recuerdan
+var vistaBarras = localStorage.getItem('vistaBarras') || 'ivg';  // 'ivg' | 'neto'
+if (['ivg', 'neto'].indexOf(vistaBarras) < 0) vistaBarras = 'ivg'; // migra el viejo 'pct'
+var granBarras = localStorage.getItem('granBarras') || 'mes';    // 'mes' | 'dia'
+if (['mes', 'dia'].indexOf(granBarras) < 0) granBarras = 'mes';
+var vistaCats = localStorage.getItem('vistaCats') || 'dona';     // 'dona' | 'lista'
+if (['dona', 'lista'].indexOf(vistaCats) < 0) vistaCats = 'dona';
+
+// Paleta para gráficas y cuentas nuevas (incluye los colores de las 5 actuales)
+var PALETA = ['#1A73E8', '#DA0081', '#F9AB00', '#188038', '#820AD1',
+              '#C5221F', '#12B5CB', '#FF6D01', '#FDDA24', '#9AA0A6'];
+
+var $ = function (id) { return document.getElementById(id); };
+
+// ------------------------------------------------ Formato colombiano
+/** 44404 -> "44.404" ; 44404.5 -> "44.404,50" (sin el signo $). */
+function montoATexto(n) {
+  var opciones = (Math.round(n * 100) % 100 === 0)
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return Number(n).toLocaleString('es-CO', opciones);
+}
+/* ---------- Dinero (v9): una sola capa de formato -----------------------
+   Dos casos, según de dónde viene el número:
+     fmtBase(nCOP): monto CONSOLIDADO (el backend lo da en COP). Se muestra en
+       la moneda base dividiendo por su tasa. Lo usan patrimonio, resúmenes,
+       tablas y gráficas.
+     fmtNativo(n, moneda): monto en SU moneda (saldo de una cuenta, valor de un
+       movimiento). Se muestra tal cual, con su código si no es la base.
+   `conCodigo` añade el código de moneda en gris (solo en lugares clave). */
+var monedaBase = 'COP';
+
+var INFO_MONEDA = {
+  COP: { simbolo: '$', dec: 0 }, USD: { simbolo: 'US$', dec: 2 }, EUR: { simbolo: '€', dec: 2 },
+  GBP: { simbolo: '£', dec: 2 }, BRL: { simbolo: 'R$', dec: 2 }, MXN: { simbolo: 'MX$', dec: 2 },
+  ARS: { simbolo: 'AR$', dec: 2 }, CLP: { simbolo: '$', dec: 0 }, PEN: { simbolo: 'S/', dec: 2 },
+  CAD: { simbolo: 'CA$', dec: 2 }, CHF: { simbolo: 'CHF', dec: 2 }, JPY: { simbolo: '¥', dec: 0 }
+};
+function infoMoneda(m) { return INFO_MONEDA[m] || { simbolo: (m || '') + ' ', dec: 2 }; }
+function simboloDe(moneda) { return infoMoneda(moneda).simbolo; }
+
+/** Número con miles es-CO. dec=0 = enteros salvo que haya centavos reales. */
+function numeroMoneda(n, dec) {
+  if (dec === 0) {
+    return (Math.round(n * 100) % 100 === 0)
+      ? Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 })
+      : Number(n).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return Number(n).toLocaleString('es-CO', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+/** El código de moneda en gris pequeño (para las cifras clave). */
+function conCodigoBase(txt, moneda) {
+  return txt + '<span class="cod-moneda">' + moneda + '</span>';
+}
+
+/** Monto en su propia moneda. `conCodigo`: HTML con el código (solo si ≠ base). */
+function fmtNativo(n, moneda, conCodigo) {
+  moneda = moneda || 'COP';
+  var inf = infoMoneda(moneda);
+  var txt = inf.simbolo + ' ' + numeroMoneda(n, inf.dec);
+  if (conCodigo === 'html') return conCodigoBase(txt, moneda); // siempre el código, en HTML
+  if (conCodigo && moneda !== monedaBase) txt += ' ' + moneda;
+  return txt;
+}
+
+/** Tasa de la moneda base a COP (1 si es COP, o si la base perdió su tasa). */
+function tasaBase() {
+  if (monedaBase === 'COP') return 1;
+  var t = (datos && datos.tasas || {})[monedaBase];
+  return (t && t.tasa > 0) ? t.tasa : 1;
+}
+
+/** Monto consolidado (en COP) mostrado en la moneda base. */
+function fmtBase(nCOP, conCodigo) {
+  return fmtNativo(nCOP / tasaBase(), monedaBase, conCodigo);
+}
+function cuentaPorNombre(n) {
+  return datos ? (datos.cuentas.filter(function (c) { return c.cuenta === n; })[0] || null) : null;
+}
+
+/**
+ * Texto del equivalente en la MONEDA BASE de una cuenta que está en otra moneda.
+ * Respeta el mismo signo que la línea principal: una deuda se muestra en
+ * positivo ("debes"), así que su equivalente también (si no, salía "≈ $ -80.000").
+ * Devuelve '' si la cuenta ya está en la base, y avisa si no hay tasa.
+ */
+function textoEquivalente(c, conTasa) {
+  if (c.moneda === monedaBase) return '';
+  // Solo las monedas foráneas (no COP) tienen tasa propia que pueda faltar
+  var t = (datos.tasas || {})[c.moneda] || {};
+  if (c.moneda !== 'COP' && (t.sinTasa || !(t.tasa > 0))) {
+    return '⚠ Sin tasa de ' + c.moneda + ': no está sumando al patrimonio (pon una tasa manual en Ajustes)';
+  }
+  var esDeudaEnRojo = (c.tipo === 'Deuda' && c.saldo <= 0);
+  var valorCOP = esDeudaEnRojo ? -c.saldoCOP : c.saldoCOP;
+  var txt = '≈ ' + fmtBase(Math.round(valorCOP));
+  // La tasa se expresa en la base: 1 [moneda] = [base] (rate/tasaBase)
+  if (conTasa && c.moneda !== 'COP') {
+    txt += ' · 1 ' + c.moneda + ' = ' + fmtNativo(t.tasa / tasaBase(), monedaBase);
+    if (t.esManual) txt += ' (tasa manual)';
+  }
+  return txt;
+}
+/** Moneda de una cuenta por nombre ('COP' si no está). */
+function monedaDe(nombre) {
+  var c = cuentaPorNombre(nombre);
+  return c ? (c.moneda || 'COP') : 'COP';
+}
+/** Tasa a COP de una cuenta (1 para COP). */
+function tasaDe(nombre) {
+  var c = cuentaPorNombre(nombre);
+  return c && c.tasa !== undefined ? c.tasa : 1;
+}
+/** '#RRGGBB' + alfa -> 'rgba(r,g,b,a)' (para degradados de las gráficas). */
+function hexA(hex, a) {
+  var r = parseInt(hex.substring(1, 3), 16), g = parseInt(hex.substring(3, 5), 16), b = parseInt(hex.substring(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+/* Convierte lo escrito en el campo de monto a Number.
+   Acepta "12500", "12.500", "12500,50", "12.500,50" y negativos. */
+function parsearMonto(txt) {
+  var s = String(txt).trim().replace(/\$|\s/g, '');
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ''); // solo puntos de miles
+  return parseFloat(s);
+}
+
+/* Formatea el campo mientras se escribe (44404 -> 44.404) para que un dedazo
+   de un dígito salte a la vista. Conserva la posición del cursor contando los
+   dígitos que quedaban a su izquierda. */
+function formatearMontoEnVivo(inp, permitirNegativo) {
+  var txt = inp.value;
+  var pos = inp.selectionStart;
+  // El ancla cuenta dígitos Y la coma decimal: contar solo dígitos dejaría el
+  // cursor antes de la coma al escribirla, y el decimal siguiente entraría mal.
+  var sigAntes = (txt.slice(0, pos).match(/[\d,]/g) || []).length;
+
+  var negativo = permitirNegativo && txt.trim().charAt(0) === '-';
+  var limpio = txt.replace(/[^\d,]/g, '');          // fuera los puntos de miles viejos
+  var partes = limpio.split(',');
+  var enteros = partes[0].replace(/^0+(?=\d)/, ''); // sin ceros a la izquierda
+  var decimales = partes.length > 1 ? partes.slice(1).join('').substring(0, 2) : null;
+
+  var salida = enteros ? Number(enteros).toLocaleString('es-CO') : '';
+  if (decimales !== null) salida = (salida || '0') + ',' + decimales;
+  if (negativo && (salida || txt.trim() === '-')) salida = '-' + salida;
+  inp.value = salida;
+
+  // Devolver el cursor a donde estaba, medido en esos mismos caracteres
+  var nuevaPos = salida.length, vistos = 0;
+  if (sigAntes === 0) {
+    nuevaPos = negativo ? 1 : 0;
+  } else {
+    for (var i = 0; i < salida.length; i++) {
+      if (/[\d,]/.test(salida.charAt(i)) && ++vistos === sigAntes) { nuevaPos = i + 1; break; }
+    }
+  }
+  inp.setSelectionRange(nuevaPos, nuevaPos);
+}
+
+var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function nombreMes(yyyymm) {
+  var p = yyyymm.split('-');
+  return MESES[Number(p[1]) - 1] + ' ' + p[0];
+}
+function fechaBonita(iso) {
+  var hoy = datos ? datos.hoy : '';
+  if (iso === hoy) return 'Hoy';
+  var p = iso.split('-');
+  var ayer = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1, 12);
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12);
+  if (hoy && Utilities_fmt(ayer) === hoy) return 'Ayer';
+  var dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  return dias[d.getDay()] + ' ' + Number(p[2]) + ' ' + MESES[Number(p[1]) - 1];
+}
+function Utilities_fmt(d) { // yyyy-mm-dd de un Date local
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// ------------------------------------------------ Toast y carga
+var toastTimer = null;
+function toast(msg, tipo) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (tipo || '');
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
+}
+function cargando(v) { $('cargando').style.display = v ? 'flex' : 'none'; }
+
+// ------------------------------------------------ Comunicación con Apps Script
+var MENSAJES_OK = {
+  agregarMovimiento: 'Movimiento guardado',
+  editarMovimiento: 'Cambios guardados',
+  borrarMovimiento: 'Movimiento borrado',
+  ajustarSaldo: 'Cuenta cuadrada',
+  editarCuenta: 'Saldo inicial actualizado',
+  ajustarInicioMes: 'Inicio de mes ajustado',
+  agregarCuenta: 'Cuenta creada',
+  eliminarCuenta: 'Cuenta eliminada',
+  agregarCategoria: 'Categoría creada',
+  eliminarCategoria: 'Categoría eliminada',
+  editarCategoria: 'Categoría actualizada',
+  reordenarCuentas: 'Orden guardado',
+  guardarPresupuesto: 'Presupuestos actualizados'
+};
+
+/** SVG de un icono del sprite (para armar botones por JS). */
+function icono(nombre, mini) {
+  return '<svg class="ic' + (mini ? ' ic-mini' : '') + '"><use href="#i-' + nombre + '"/></svg>';
+}
+
+/** Cuentas separadas por tipo (las deudas viven aparte en el Panel). */
+function cuentasActivas() { return datos.cuentas.filter(function (c) { return c.tipo !== 'Deuda'; }); }
+function cuentasDeuda() { return datos.cuentas.filter(function (c) { return c.tipo === 'Deuda'; }); }
+
+/* `args` es siempre un array. `alTerminar(ok)` corre tanto si funcionó como si
+   falló: quien llama decide qué limpiar o rehabilitar según el resultado. */
+function llamar(fn, args, alTerminar) {
+  cargando(true);
+  var r = google.script.run
+    .withSuccessHandler(function (resp) {
+      datos = resp;
+      cargando(false);
+      renderTodo();
+      if (MENSAJES_OK[fn]) toast(MENSAJES_OK[fn], 'exito');
+      if (alTerminar) alTerminar(true);
+    })
+    .withFailureHandler(function (err) {
+      cargando(false);
+      toast(err && err.message ? err.message : 'Error de conexión', 'error');
+      if (alTerminar) alTerminar(false);
+    });
+  r[fn].apply(r, args);
+}
+function cargarDatos(silencioso) {
+  if (!silencioso) cargando(true);
+  google.script.run
+    .withSuccessHandler(function (resp) { datos = resp; cargando(false); renderTodo(); })
+    .withFailureHandler(function (err) {
+      cargando(false);
+      toast(err && err.message ? err.message : 'No pude cargar los datos', 'error');
+    })
+    .getDatos();
+}
+
+// ------------------------------------------------ Esqueletos de carga inicial
+/* En la PRIMERA carga no hay velo: se pintan bloques con brillo donde irán las
+   cifras y tarjetas (nada de saltos). El velo queda para las acciones. */
+function pintarEsqueletos() {
+  cargando(false);
+  var esq = function (ancho) { return '<span class="esqueleto" style="width:' + ancho + '">&nbsp;</span>'; };
+  $('txt-patrimonio').innerHTML = esq('60%');
+  $('txt-desglose').innerHTML = esq('80%');
+  var lc = $('lista-cuentas');
+  lc.innerHTML = '';
+  for (var i = 0; i < 4; i++) {
+    var d = document.createElement('div');
+    d.className = 'tarjeta-cuenta';
+    d.innerHTML = '<div class="nombre">' + esq('70%') + '</div>' +
+      '<div class="saldo">' + esq('55%') + '</div>' +
+      '<div class="spark-wrap">' + esq('100%') + '</div>';
+    lc.appendChild(d);
+  }
+  ['txt-inicio-mes', 'txt-ingresos', 'txt-gastos', 'txt-neto'].forEach(function (id) {
+    $(id).innerHTML = esq('72px');
+  });
+}
+
+// ------------------------------------------------ Render general
+function renderTodo() {
+  if (!datos) return;
+  monedaBase = datos.monedaBase || 'COP'; // en qué moneda se muestra todo
+  renderChipsRegistrar();
+  renderResumen();
+  renderMeses();
+  renderFiltros();
+  renderHistorial();
+  manejarHash(); // si hay una cuenta abierta (o llega en el hash), refrescarla
+}
+
+// Versión cliente de ultimoDiaMesAnterior_ del backend (misma aritmética pura)
+function ultimoDiaMesAnteriorCli(mes) {
+  var y = Number(mes.substring(0, 4));
+  var m = Number(mes.substring(5, 7)) - 1;
+  if (m === 0) { m = 12; y -= 1; }
+  var dias = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+  if (m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) dias = 29;
+  return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + dias).slice(-2);
+}
+
+// ============================================================ REGISTRAR
+var VERBO = { 'Gasto': 'gasto', 'Ingreso': 'ingreso', 'Transferencia': 'transferencia', 'Pago tarjeta': 'pago' };
+
+function elegirTipo(tipo) {
+  tipoSel = tipo;
+  document.querySelectorAll('.btn-tipo').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.tipo === tipo);
+  });
+
+  // Soltar la categoría anterior si no encaja con el tipo nuevo: si no, un
+  // Gasto en "Comida" deja la transferencia siguiente marcada como Comida.
+  if (catSel && datos) {
+    var cat = datos.categorias.filter(function (c) { return c.categoria === catSel; })[0];
+    if (cat && cat.tipoSugerido && cat.tipoSugerido !== tipo) catSel = '';
+  }
+
+  var esDoble = (tipo === 'Transferencia' || tipo === 'Pago tarjeta');
+  // Gasto/Ingreso usan la tarjeta de una sola cuenta; transferencia/pago el
+  // selector visual Origen → Destino.
+  $('bloque-cuenta').hidden = esDoble;
+  $('bloque-transfer').hidden = !esDoble;
+  // Mover plata no es gastarla: transferencias y pagos van sin categoría
+  $('bloque-categoria').hidden = esDoble;
+  if (esDoble) transferLado = cuentaSel ? 'destino' : 'origen'; // arrancar por lo que falte
+  $('btn-guardar').textContent = 'Guardar ' + VERBO[tipo];
+  renderChipsRegistrar();
+}
+
+/** Cuentas que aplican como origen / destino según el tipo elegido. */
+function opcionesOrigen() {
+  // Gasto/Ingreso: cualquier cuenta (gastar con la tarjeta aumenta la deuda).
+  // Transferencia y Pagar deuda salen de una cuenta normal.
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+  return esDoble ? cuentasActivas() : datos.cuentas;
+}
+function opcionesDestino() {
+  return tipoSel === 'Pago tarjeta' ? cuentasDeuda() : cuentasActivas();
+}
+
+function chipCuenta(c, activa, onclick) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chip' + (activa ? ' activa' : '');
+  b.style.setProperty('--color-cuenta', c.color);
+  b.innerHTML = '<span class="punto"></span>' + c.cuenta;
+  b.onclick = onclick;
+  return b;
+}
+
+function renderChipsRegistrar() {
+  if (!datos) return;
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+
+  // Si la selección previa ya no aplica al tipo elegido, soltarla
+  var origenes = opcionesOrigen();
+  var destinos = opcionesDestino().filter(function (c) { return c.cuenta !== cuentaSel; });
+  if (cuentaSel && !origenes.some(function (c) { return c.cuenta === cuentaSel; })) cuentaSel = '';
+  if (destinoSel && !destinos.some(function (c) { return c.cuenta === destinoSel; })) destinoSel = '';
+
+  // Sin selección, arrancar con la última cuenta usada: un toque menos al día
+  if (!cuentaSel) {
+    var ultima = localStorage.getItem('ultimaCuenta');
+    if (ultima && origenes.some(function (c) { return c.cuenta === ultima; })) cuentaSel = ultima;
+  }
+
+  if (esDoble) {
+    renderTransfer(origenes, destinos);
+  } else {
+    // Gasto/Ingreso: una sola cuenta
+    var cont = $('chips-cuenta');
+    cont.innerHTML = '';
+    origenes.forEach(function (c) {
+      cont.appendChild(chipCuenta(c, c.cuenta === cuentaSel, function () {
+        cuentaSel = c.cuenta;
+        renderChipsRegistrar();
+      }));
+    });
+  }
+
+  // Categorías: primero las que sugieren el tipo elegido; las ocultas no se
+  // ofrecen (pero si una quedó seleccionada por un cambio de tipo, se respeta).
+  var cc = $('chips-categoria');
+  cc.innerHTML = '';
+  var ocultas = datos.catsOcultas || [];
+  var cats = datos.categorias.filter(function (c) {
+    return ocultas.indexOf(c.categoria) < 0 || c.categoria === catSel;
+  }).sort(function (a, b) {
+    var pa = a.tipoSugerido === tipoSel ? 0 : 1;
+    var pb = b.tipoSugerido === tipoSel ? 0 : 1;
+    return pa - pb;
+  });
+  cats.forEach(function (c) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (c.categoria === catSel ? ' activa' : '');
+    b.textContent = c.icono + ' ' + c.categoria;
+    b.onclick = function () { catSel = c.categoria; renderChipsRegistrar(); };
+    cc.appendChild(b);
+  });
+  // Chip final: gestionar categorías (lleva a Ajustes)
+  var mas = document.createElement('button');
+  mas.type = 'button';
+  mas.className = 'chip';
+  mas.title = 'Crear, editar u ocultar categorías';
+  mas.innerHTML = icono('ajustes', true);
+  mas.onclick = function () { irA('ajustes'); };
+  cc.appendChild(mas);
+
+  actualizarBloqueValorDestino();
+}
+
+/**
+ * Selector visual de transferencia: dos tarjetas (Origen → Destino) con la
+ * cuenta elegida, y debajo los chips del lado que se está editando. El botón ⇄
+ * invierte (solo en transferencias entre cuentas; en Pagar deuda no aplica).
+ */
+function renderTransfer(origenes, destinos) {
+  var esPago = tipoSel === 'Pago tarjeta';
+  $('tr-origen-rol').textContent = 'Desde';
+  $('tr-destino-rol').textContent = esPago ? 'Deuda a pagar' : 'Hacia';
+
+  var co = cuentaPorNombre(cuentaSel);
+  $('tr-origen-punto').style.background = co ? co.color : 'transparent';
+  $('tr-origen-nombre').textContent = co ? co.cuenta : 'Elige';
+  var cdn = cuentaPorNombre(destinoSel);
+  $('tr-destino-punto').style.background = cdn ? cdn.color : 'transparent';
+  $('tr-destino-nombre').textContent = cdn ? cdn.cuenta : 'Elige';
+  $('tr-origen').classList.toggle('activa', transferLado === 'origen');
+  $('tr-destino').classList.toggle('activa', transferLado === 'destino');
+  $('tr-swap').style.visibility = esPago ? 'hidden' : 'visible';
+
+  // Chips del lado activo
+  var opciones = transferLado === 'destino' ? destinos : origenes;
+  var sel = transferLado === 'destino' ? destinoSel : cuentaSel;
+  $('tr-chips-lbl').textContent = transferLado === 'destino'
+    ? (esPago ? 'Elige la deuda a pagar' : 'Elige la cuenta que recibe')
+    : 'Elige la cuenta de origen';
+  var cont = $('chips-transfer');
+  cont.innerHTML = '';
+  opciones.forEach(function (c) {
+    cont.appendChild(chipCuenta(c, c.cuenta === sel, function () {
+      if (transferLado === 'destino') destinoSel = c.cuenta;
+      else { cuentaSel = c.cuenta; if (destinoSel === cuentaSel) destinoSel = ''; }
+      // Auto-avanzar al destino apenas se elige el origen (si falta)
+      if (transferLado === 'origen' && !destinoSel) transferLado = 'destino';
+      renderChipsRegistrar();
+    }));
+  });
+  $('destino-vacio').hidden = !(esPago && destinos.length === 0);
+
+  // Aviso de monedas distintas (el campo "llega al destino" lo pone actualizarBloqueValorDestino)
+  var tasaEl = $('tr-tasa');
+  if (cuentaSel && destinoSel && monedaDe(cuentaSel) !== monedaDe(destinoSel)) {
+    tasaEl.hidden = false;
+    tasaEl.textContent = 'Monedas distintas (' + monedaDe(cuentaSel) + ' → ' +
+      monedaDe(destinoSel) + '): abajo indica cuánto llega al destino.';
+  } else { tasaEl.hidden = true; tasaEl.textContent = ''; }
+}
+
+/** El campo "llega al destino" solo aparece entre cuentas de monedas distintas. */
+function actualizarBloqueValorDestino() {
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+  var distintas = esDoble && cuentaSel && destinoSel && monedaDe(cuentaSel) !== monedaDe(destinoSel);
+  $('bloque-valor-destino').hidden = !distintas;
+  if (distintas) {
+    var mDest = monedaDe(destinoSel);
+    $('lbl-valor-destino').textContent = 'Llega a ' + destinoSel + ' (' + mDest + ')';
+    $('vd-simbolo').textContent = mDest === 'USD' ? 'US$' : (mDest === 'EUR' ? '€' : '$');
+  }
+}
+
+function habilitarGuardar(v) { $('btn-guardar').disabled = !v; }
+
+function guardar() {
+  var valor = parsearMonto($('inp-monto').value);
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+
+  // Validación amable antes de ir al servidor
+  if (!(valor > 0)) return toast('Escribe un monto mayor que cero', 'error');
+  if (!cuentaSel) return toast('Elige la cuenta', 'error');
+  if (esDoble && !destinoSel) return toast('Elige la cuenta destino', 'error');
+  if (!esDoble && !catSel) return toast('Elige una categoría', 'error');
+  if (!$('inp-fecha').value) return toast('Elige la fecha', 'error');
+
+  // Entre monedas distintas también se necesita cuánto llega al destino
+  var conValorDestino = !$('bloque-valor-destino').hidden;
+  var valorDestino = conValorDestino ? parsearMonto($('inp-valor-destino').value) : '';
+  if (conValorDestino && !(valorDestino > 0)) {
+    return toast('Escribe cuánto llega a ' + destinoSel + ' (' + monedaDe(destinoSel) + ')', 'error');
+  }
+
+  // El botón queda bloqueado hasta que el servidor responda: Apps Script tarda
+  // 1-2 s y un segundo toque crearía una fila duplicada.
+  habilitarGuardar(false);
+  llamar('agregarMovimiento', [{
+    fecha: $('inp-fecha').value,
+    cuenta: cuentaSel,
+    tipo: tipoSel,
+    cuentaDestino: esDoble ? destinoSel : '',
+    categoria: esDoble ? '' : catSel, // mover plata no lleva categoría
+    descripcion: $('inp-desc').value.trim(),
+    valor: valor,
+    valorDestino: valorDestino
+  }], function (ok) {
+    habilitarGuardar(true);
+    // Solo si quedó guardado: si falló, el usuario conserva lo que escribió.
+    if (ok) {
+      $('inp-monto').value = '';
+      $('inp-desc').value = '';
+      $('inp-valor-destino').value = '';
+      localStorage.setItem('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
+      // Registrar es una subvista: al guardar, volver a donde estabas
+      cerrarRegistrar();
+    }
+  });
+}
+
+// ============================================================ PANEL
+var ordenando = false;      // modo "ordenar tarjetas" activo
+var ordenTrabajo = null;    // { activos: [nombres], deudas: [nombres] } mientras se ordena
+var dragNombre = null;      // tarjeta que se está arrastrando (PC)
+
+/** Tarjeta de una cuenta o deuda. `lista` y `pos` solo importan al ordenar. */
+function tarjetaDeCuenta(c, lista, pos) {
+  var d = document.createElement('div');
+  d.className = 'tarjeta-cuenta' + (c.tipo === 'Deuda' ? ' deuda' : '');
+  d.style.setProperty('--color-cuenta', c.color);
+
+  var nombre = document.createElement('div');
+  nombre.className = 'nombre';
+  nombre.textContent = c.cuenta;           // textContent: el nombre viene de la hoja
+  var saldo = document.createElement('div');
+  d.appendChild(nombre);
+  d.appendChild(saldo);
+
+  if (c.tipo === 'Deuda') {
+    // Las deudas se muestran en positivo: "debes tanto"
+    if (c.saldo <= 0) {
+      saldo.className = 'saldo rojo';
+      saldo.textContent = fmtNativo(-c.saldo, c.moneda);
+      var mini = document.createElement('span');
+      mini.className = 'mini';
+      mini.textContent = 'debes';
+      d.insertBefore(mini, saldo);
+    } else {
+      saldo.className = 'saldo verde';
+      saldo.textContent = fmtNativo(c.saldo, c.moneda) + ' a favor';
+    }
+  } else {
+    saldo.className = 'saldo' + (c.saldo < 0 ? ' rojo' : '');
+    saldo.textContent = fmtNativo(c.saldo, c.moneda);
+  }
+
+  // Cuentas en otra moneda que la base: debajo va el equivalente en la base
+  if (c.moneda !== monedaBase) {
+    var eq = document.createElement('span');
+    eq.className = 'equiv';
+    eq.textContent = textoEquivalente(c, false);
+    d.appendChild(eq);
+  }
+
+  if (ordenando) {
+    // Flechas (funcionan en táctil y PC) + arrastre nativo en PC
+    var mover = function (delta) {
+      var nuevo = pos + delta;
+      if (nuevo < 0 || nuevo >= lista.length) return;
+      lista.splice(pos, 1);
+      lista.splice(nuevo, 0, c.cuenta);
+      renderResumen();
+    };
+    var izq = document.createElement('button');
+    izq.type = 'button'; izq.className = 'btn-orden'; izq.textContent = '◀';
+    izq.onclick = function (e) { e.stopPropagation(); mover(-1); };
+    var der = document.createElement('button');
+    der.type = 'button'; der.className = 'btn-orden der'; der.textContent = '▶';
+    der.onclick = function (e) { e.stopPropagation(); mover(1); };
+    d.appendChild(izq);
+    d.appendChild(der);
+
+    d.draggable = true;
+    d.ondragstart = function () { dragNombre = c.cuenta; };
+    d.ondragover = function (e) { e.preventDefault(); };
+    d.ondrop = function (e) {
+      e.preventDefault();
+      var desde = lista.indexOf(dragNombre);
+      if (desde < 0 || dragNombre === c.cuenta) return; // solo dentro de su sección
+      lista.splice(desde, 1);
+      lista.splice(pos, 0, dragNombre);
+      dragNombre = null;
+      renderResumen();
+    };
+  } else {
+    // Sparkline de los últimos 30 días (contexto de un vistazo, sin otro canvas)
+    var spark = miniSparkline(c.cuenta, c.color);
+    if (spark) {
+      var sw = document.createElement('div');
+      sw.className = 'spark-wrap';
+      sw.innerHTML = spark;
+      d.appendChild(sw);
+    }
+    d.title = (c.nota ? c.nota + ' — ' : '') + 'Toca para ver el detalle de la cuenta';
+    d.onclick = function () { abrirCuenta(c); };
+  }
+  return d;
+}
+
+/**
+ * Mini-gráfica SVG del saldo de una cuenta en los últimos 30 días.
+ * SVG en vez de otro canvas de Chart.js: pesa nada y no compite por memoria.
+ * Devuelve null si no hay suficiente historia (cuenta recién creada).
+ */
+function miniSparkline(nombre, color) {
+  var h = datos.historia || { porCuenta: {} };
+  var serie = (h.porCuenta[nombre] || []).slice(-30).filter(function (v) {
+    return v !== null && v !== undefined;
+  });
+  if (serie.length < 2) return null;
+  var min = Math.min.apply(null, serie), max = Math.max.apply(null, serie);
+  var rango = (max - min) || 1;
+  var w = 100, ht = 26;
+  var pts = serie.map(function (v, i) {
+    var x = serie.length > 1 ? (i / (serie.length - 1)) * w : 0;
+    var y = ht - ((v - min) / rango) * (ht - 4) - 2; // 2px de margen arriba y abajo
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + ht + '" preserveAspectRatio="none" aria-hidden="true">' +
+    '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" ' +
+    'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>';
+}
+
+function renderResumen() {
+  // Patrimonio: cifra clave, lleva el código de la moneda base en gris
+  $('txt-patrimonio').innerHTML = fmtBase(datos.patrimonio, 'html');
+
+  // Desglose activos / deudas (consolidado, en la moneda base)
+  var totalActivos = 0, totalDeudas = 0;
+  datos.cuentas.forEach(function (c) {
+    if (c.tipo === 'Deuda') totalDeudas += -c.saldoCOP;
+    else totalActivos += c.saldoCOP;
+  });
+  $('txt-desglose').textContent =
+    'Cuentas ' + fmtBase(totalActivos) + '  ·  Deudas ' + fmtBase(totalDeudas);
+
+  // Tasas usadas: monedas foráneas (no la base ni COP) con cuentas. La tasa se
+  // expresa en la base: "1 USD = [base]".
+  var monedasUsadas = {};
+  datos.cuentas.forEach(function (c) {
+    if (c.moneda !== 'COP' && c.moneda !== monedaBase) monedasUsadas[c.moneda] = true;
+  });
+  var listaM = Object.keys(monedasUsadas);
+  var elTasas = $('txt-tasas');
+  elTasas.hidden = listaM.length === 0;
+  if (listaM.length) {
+    elTasas.textContent = listaM.map(function (m) {
+      var t = (datos.tasas || {})[m] || {};
+      // Sin tasa esas cuentas no suman al patrimonio: hay que decirlo, no
+      // mostrar un "= $ 0" que parece un saldo real.
+      if (t.sinTasa || !(t.tasa > 0)) return '⚠ sin tasa de ' + m;
+      return '1 ' + m + ' = ' + fmtNativo(t.tasa / tasaBase(), monedaBase) + (t.esManual ? ' (tasa manual)' : '');
+    }).join('  ·  ');
+  } else {
+    elTasas.textContent = '';
+  }
+
+  var porNombre = {};
+  datos.cuentas.forEach(function (c) { porNombre[c.cuenta] = c; });
+  var activos = cuentasActivas(), deudas = cuentasDeuda();
+
+  // Sin deudas la sección solo suma ruido: se oculta (se agregan desde Ajustes).
+  // En modo ordenar se muestra igual para poder reordenarlas.
+  $('seccion-deudas').hidden = (deudas.length === 0 && !ordenando);
+
+  // En modo ordenar se pinta según el orden de trabajo, no el de la hoja
+  var listaA = ordenando ? ordenTrabajo.activos : activos.map(function (c) { return c.cuenta; });
+  var listaD = ordenando ? ordenTrabajo.deudas : deudas.map(function (c) { return c.cuenta; });
+
+  var lc = $('lista-cuentas');
+  lc.innerHTML = '';
+  listaA.forEach(function (n, i) { lc.appendChild(tarjetaDeCuenta(porNombre[n], listaA, i)); });
+  var ld = $('lista-deudas');
+  ld.innerHTML = '';
+  listaD.forEach(function (n, i) { ld.appendChild(tarjetaDeCuenta(porNombre[n], listaD, i)); });
+
+  if (!ordenando) {
+    var masC = document.createElement('div');
+    masC.className = 'tarjeta-cuenta agregar';
+    masC.innerHTML = icono('mas', true) + 'Agregar cuenta';
+    masC.onclick = function () { abrirModalCuenta('Activo'); };
+    lc.appendChild(masC);
+
+    var masD = document.createElement('div');
+    masD.className = 'tarjeta-cuenta agregar';
+    masD.innerHTML = icono('mas', true) + (deudas.length ? 'Agregar deuda' : 'Registrar una deuda');
+    masD.onclick = function () { abrirModalCuenta('Deuda'); };
+    ld.appendChild(masD);
+  }
+  $('btn-ordenar').innerHTML = ordenando
+    ? icono('check') + 'Listo'
+    : icono('orden') + 'Ordenar';
+
+  var r = datos.resumen.mesActual;
+  $('titulo-mes').textContent = 'Este mes (' + nombreMes(r.mes) + ')';
+  $('txt-inicio-mes').textContent = fmtBase(datos.patrimonioInicioMes);
+  $('txt-ingresos').textContent = fmtBase(r.ingresos);
+  $('txt-gastos').textContent = fmtBase(r.gastos);
+  $('txt-neto').textContent = fmtBase(r.neto);
+  $('txt-neto').className = r.neto >= 0 ? 'verde' : 'rojo';
+
+  // Comparación contra el mes pasado (estilo Whisper), solo en ingresos y
+  // gastos: el neto se deduce de esos dos y su chip solo agregaba ruido.
+  // Las clases 'sube'/'baja' pintan rojo/verde: se elige por si el cambio es
+  // BUENO o malo, no por la dirección (ingresar más es verde, gastar más es rojo).
+  var meses = datos.resumen.meses;
+  var prev = meses.length > 1 ? meses[meses.length - 2] : null;
+  var mesPrevTxt = prev ? nombreMes(prev.mes).split(' ')[0] : '';
+
+  var chipG = $('chip-gastos-delta');
+  if (prev && prev.gastos > 0) {
+    var pctG = Math.round((r.gastos - prev.gastos) / prev.gastos * 100);
+    chipG.hidden = false;
+    chipG.textContent = (pctG >= 0 ? '↑' : '↓') + Math.abs(pctG) + '% vs ' + mesPrevTxt;
+    chipG.className = 'chip-delta ' + (pctG > 0 ? 'sube' : 'baja');
+  } else {
+    chipG.hidden = true;
+    chipG.textContent = ''; // que no reaparezca el chip del mes anterior
+  }
+
+  var chipI = $('chip-ingresos-delta');
+  if (prev && prev.ingresos > 0) {
+    var pctI = Math.round((r.ingresos - prev.ingresos) / prev.ingresos * 100);
+    chipI.hidden = false;
+    chipI.textContent = (pctI >= 0 ? '↑' : '↓') + Math.abs(pctI) + '% vs ' + mesPrevTxt;
+    chipI.className = 'chip-delta ' + (pctI >= 0 ? 'baja' : 'sube');
+  } else {
+    chipI.hidden = true;
+    chipI.textContent = '';
+  }
+
+  // Proyección: al ritmo de gasto que llevas, ¿en cuánto cierra el mes?
+  var diaHoy = Number(datos.hoy.substring(8, 10));
+  var proy = $('txt-proyeccion');
+  if (r.gastos > 0 && diaHoy > 0) {
+    var ritmo = r.gastos / diaHoy;
+    proy.hidden = false;
+    proy.textContent = 'A este ritmo gastarás ~' + fmtBase(Math.round(ritmo * diasDelMes(r.mes))) +
+      ' este mes (' + fmtBase(Math.round(ritmo)) + '/día)';
+  } else {
+    proy.hidden = true;
+  }
+
+  renderPresupuestos();
+  renderGraficas();
+}
+
+function alternarOrden() {
+  if (!ordenando) {
+    ordenando = true;
+    ordenTrabajo = {
+      activos: cuentasActivas().map(function (c) { return c.cuenta; }),
+      deudas: cuentasDeuda().map(function (c) { return c.cuenta; })
+    };
+    renderResumen();
+  } else {
+    var orden = ordenTrabajo.activos.concat(ordenTrabajo.deudas);
+    ordenando = false;
+    ordenTrabajo = null;
+    llamar('reordenarCuentas', [orden]);
+  }
+}
+
+function etiquetaRango() {
+  return rangoSel === 1 ? nombreMes(datos.resumen.mesActual.mes) : 'últimos ' + rangoSel + ' meses';
+}
+
+/** Días que tiene un mes 'yyyy-MM' (misma tabla del backend, con bisiesto). */
+function diasDelMes(mes) {
+  var y = Number(mes.substring(0, 4));
+  var m = Number(mes.substring(5, 7));
+  var dias = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+  if (m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) dias = 29;
+  return dias;
+}
+
+// Dibuja el total en el centro de la dona: el hueco quedaba desaprovechado y
+// ahorra sumar de cabeza. Colores desde las variables CSS para que el tema aplique.
+var pluginCentroDona = {
+  id: 'centroDona',
+  afterDraw: function (chart) {
+    var total = 0;
+    chart.data.datasets[0].data.forEach(function (v) { total += v; });
+    var a = chart.chartArea;
+    var cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
+    var estilo = getComputedStyle(document.documentElement);
+    var ctx = chart.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = estilo.getPropertyValue('--texto-suave').trim() || '#5F6368';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillText('TOTAL', cx, cy - 11);
+    ctx.fillStyle = estilo.getPropertyValue('--texto').trim() || '#202124';
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillText(fmtBase(total), cx, cy + 7);
+    ctx.restore();
+  }
+};
+
+/** Salta al Historial ya filtrado por una categoría (clic en dona, lista o
+    presupuesto). `mes` explícito manda; si no, el del rango cuando es "Este mes". */
+function irACategoria(cat, mes) {
+  // Los demás filtros se limpian: la intención del clic es "ver ESTOS gastos"
+  $('fil-mes').value = mes || (rangoSel === 1 ? datos.hoy.substring(0, 7) : '');
+  $('fil-cuenta').value = '';
+  $('fil-tipo').value = '';
+  $('fil-categoria').value = cat;
+  $('fil-buscar').value = '';
+  renderHistorial();
+  irA('historial');
+}
+
+function renderGraficas() {
+  // Marcar los chips activos aunque las gráficas no puedan dibujarse
+  document.querySelectorAll('#rango-graficas .chip').forEach(function (b) {
+    b.classList.toggle('activa', Number(b.dataset.rango) === rangoSel);
+  });
+  document.querySelectorAll('[data-vbarras]').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.vbarras === vistaBarras);
+  });
+  // El botón de granularidad es un interruptor: muestra el modo actual
+  $('chip-gran-txt').textContent = granBarras === 'dia' ? 'Por día' : 'Por mes';
+  document.querySelectorAll('[data-vcats]').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.vcats === vistaCats);
+  });
+
+  // Sin CDN no hay Chart.js: avisar en vez de dejar el espacio vacío en silencio
+  var sinChart = (typeof Chart === 'undefined');
+  $('graficas-error').hidden = !sinChart;
+  document.querySelector('.graficas').style.display = sinChart ? 'none' : '';
+  $('tarjeta-patrimonio-linea').style.display = sinChart ? 'none' : '';
+  if (sinChart) return;
+
+  renderGraficaPatrimonio();
+  renderGraficaCategorias();
+  renderGraficaBarras();
+}
+
+// ------------------------------------------------ Línea de patrimonio (reutilizable)
+var chartPatrimonio = null;
+
+/** Lee un color del tema como hex (para degradados). */
+function cssColor(nombre, fallback) {
+  var v = getComputedStyle(document.documentElement).getPropertyValue(nombre).trim();
+  return v || fallback;
+}
+
+/** Patrimonio consolidado en COP al cierre de cada día de `historia`. */
+function patrimonioCOPporDia() {
+  var h = datos.historia || { fechas: [], porCuenta: {} };
+  return h.fechas.map(function (f, i) {
+    var t = 0;
+    datos.cuentas.forEach(function (c) {
+      var v = (h.porCuenta[c.cuenta] || [])[i];
+      if (v !== null && v !== undefined) t += v * (c.tasa !== undefined ? c.tasa : 1);
+    });
+    return t;
+  });
+}
+
+/**
+ * Serie de patrimonio para un rango:
+ *  - rango 1 (Este mes): un punto por DÍA del mes en curso.
+ *  - 3/6/12: un punto por MES (el inicio de cada mes) + "Hoy".
+ * Todo consolidado en COP.
+ */
+function serieePatrimonio(rango) {
+  if (rango === 1) {
+    var mesHoy = datos.hoy.substring(0, 7);
+    var h = datos.historia || { fechas: [] };
+    var valoresDia = patrimonioCOPporDia();
+    var labels = [], vals = [], fechas = [];
+    h.fechas.forEach(function (f, i) {
+      if (f.substring(0, 7) === mesHoy) {
+        labels.push(Number(f.substring(8, 10)) + ' ' + MESES[Number(f.substring(5, 7)) - 1]);
+        vals.push(valoresDia[i]);
+        fechas.push(f);
+      }
+    });
+    return { labels: labels, valores: vals, fechas: fechas, esDiaria: true };
+  }
+  var meses = datos.resumen.meses.slice(-rango);
+  var labels = meses.map(function (m) { return nombreMes(m.mes); });
+  var vals = meses.map(function (m) { return m.inicio; });
+  var fechas = meses.map(function (m) { return m.mes + '-01'; });
+  labels.push('Hoy'); vals.push(datos.patrimonio); fechas.push(datos.hoy);
+  return { labels: labels, valores: vals, fechas: fechas, esDiaria: false };
+}
+
+/**
+ * Dibuja la línea de patrimonio en `canvasId` y devuelve la instancia Chart.
+ * Línea suave, degradado bajo la curva y tooltip "fecha · valor · Δ vs anterior".
+ * `vaciaId` (opcional): id del mensaje "sin datos" a mostrar/ocultar.
+ */
+function dibujarLineaPatrimonio(canvasId, rango, vaciaId) {
+  var s = serieePatrimonio(rango);
+  var canvas = $(canvasId);
+  var vacia = s.valores.length < 2;
+  if (vaciaId) $(vaciaId).hidden = !vacia;
+  canvas.parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return null;
+
+  var ctx = canvas.getContext('2d');
+  var alto = canvas.parentElement.clientHeight || 260;
+  var col = cssColor('--acento', '#1A73E8');
+  var grad = ctx.createLinearGradient(0, 0, 0, alto);
+  grad.addColorStop(0, hexA(col, 0.30));
+  grad.addColorStop(1, hexA(col, 0.02));
+
+  return new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: s.labels,
+      datasets: [{
+        data: s.valores, borderColor: col, backgroundColor: grad, fill: true,
+        tension: 0.3, pointRadius: s.esDiaria ? 0 : 3, pointHitRadius: 14, borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: function (items) {
+            return s.esDiaria ? fechaBonita(s.fechas[items[0].dataIndex]) : s.labels[items[0].dataIndex];
+          },
+          label: function (x) { return ' ' + fmtBase(x.parsed.y); },
+          afterLabel: function (x) {
+            if (x.dataIndex === 0) return '';
+            var dif = x.parsed.y - x.dataset.data[x.dataIndex - 1];
+            if (Math.abs(dif) < 0.01) return '';
+            return (dif >= 0 ? ' ↑ +' : ' ↓ −') + montoATexto(Math.abs(dif)) + ' vs el punto anterior';
+          }
+        } }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        y: { ticks: { callback: function (v) { return etiquetaCortaBase(v); } } }
+      }
+    }
+  });
+}
+
+/** Etiqueta compacta de eje: 1.500.000 -> "1,5M", 44.000 -> "44k".
+    Hasta 2 decimales (los ceros se recortan solos): así un rango angosto no
+    pinta el mismo número repetido — p.ej. 7,02M / 7M / 6,98M en vez de "7M" x7. */
+function etiquetaCorta(v) {
+  var a = Math.abs(v);
+  if (a >= 1e6) return (v / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 2 }) + 'M';
+  if (a >= 1e3) return (v / 1e3).toLocaleString('es-CO', { maximumFractionDigits: 2 }) + 'k';
+  return Math.round(v).toLocaleString('es-CO');
+}
+/** Igual, pero para valores CONSOLIDADOS (en COP): los pasa a la moneda base. */
+function etiquetaCortaBase(vCOP) { return etiquetaCorta(vCOP / tasaBase()); }
+
+function renderGraficaPatrimonio() {
+  if (chartPatrimonio) { chartPatrimonio.destroy(); chartPatrimonio = null; }
+  $('titulo-patrimonio-linea').textContent = 'Patrimonio ' +
+    (rangoSel === 1 ? '(este mes, día a día)' : '(' + etiquetaRango() + ')');
+  chartPatrimonio = dibujarLineaPatrimonio('chart-patrimonio', rangoSel);
+}
+
+// --- Gastos por categoría: dona o lista "top categorías", según vistaCats
+function renderGraficaCategorias() {
+  var meses = datos.resumen.meses.slice(-rangoSel);
+  var g = {};
+  meses.forEach(function (m) {
+    Object.keys(m.gastosPorCategoria).forEach(function (cat) {
+      g[cat] = (g[cat] || 0) + m.gastosPorCategoria[cat];
+    });
+  });
+  var etiquetas = Object.keys(g).sort(function (a, b) { return g[b] - g[a]; });
+  var total = 0;
+  etiquetas.forEach(function (e) { total += g[e]; });
+  var vacia = etiquetas.length === 0;
+
+  // Con una sola categoría la dona es un círculo entero sin información: en ese
+  // caso caemos a Lista (sin pisar la preferencia guardada del usuario).
+  var vista = (etiquetas.length === 1) ? 'lista' : vistaCats;
+
+  $('titulo-dona').textContent = 'Gastos por categoría (' + etiquetaRango() + ')';
+  $('dona-vacia').hidden = !vacia;
+  $('chart-dona').parentElement.style.display = (vista === 'dona' && !vacia) ? 'block' : 'none';
+  $('lista-cats').hidden = !(vista === 'lista' && !vacia);
+
+  if (chartDona) { chartDona.destroy(); chartDona = null; }
+  if (vacia) return;
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  if (vista === 'lista') {
+    renderListaCats(etiquetas, g, total, iconos);
+    return;
+  }
+
+  chartDona = new Chart($('chart-dona'), {
+    type: 'doughnut',
+    data: {
+      labels: etiquetas.map(function (e) { return (iconos[e] || '') + ' ' + e; }),
+      datasets: [{
+        data: etiquetas.map(function (e) { return g[e]; }),
+        // Índice módulo N: con más categorías que colores se reciclan en orden
+        backgroundColor: etiquetas.map(function (e, i) { return PALETA[i % PALETA.length]; }),
+        // El borde entre porciones debe ser del color de la tarjeta (tema)
+        borderColor: getComputedStyle(document.documentElement).getPropertyValue('--tarjeta').trim() || '#fff',
+        borderWidth: 2
+      }]
+    },
+    plugins: [pluginCentroDona],
+    options: {
+      maintainAspectRatio: false,
+      // Tocar una porción lleva al Historial filtrado por esa categoría
+      onClick: function (evt, elems) {
+        if (elems && elems.length) irACategoria(etiquetas[elems[0].index]);
+      },
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: function (ctx) {
+          var pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+          return ' ' + fmtBase(ctx.parsed) + ' (' + pct + '%)';
+        } } }
+      }
+    }
+  });
+}
+
+/** Lista "top categorías": barra proporcional + monto + % (legible en celular). */
+function renderListaCats(etiquetas, g, total, iconos) {
+  var cont = $('lista-cats');
+  cont.innerHTML = '';
+  var max = g[etiquetas[0]]; // vienen ordenadas de mayor a menor
+  etiquetas.forEach(function (cat, i) {
+    var fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'fila-cat';
+    fila.title = 'Ver estos movimientos en el Historial';
+    fila.onclick = function () { irACategoria(cat); };
+
+    var info = document.createElement('div');
+    info.className = 'fila-cat-info';
+    var nombre = document.createElement('span');
+    nombre.textContent = (iconos[cat] || '🏷️') + ' ' + cat; // textContent: viene de la hoja
+    var monto = document.createElement('span');
+    monto.className = 'monto';
+    var pct = total > 0 ? Math.round(g[cat] / total * 100) : 0;
+    monto.textContent = fmtBase(g[cat]) + ' · ' + pct + '%';
+    info.appendChild(nombre);
+    info.appendChild(monto);
+
+    var barra = document.createElement('div');
+    barra.className = 'barra';
+    var relleno = document.createElement('div');
+    relleno.className = 'relleno';
+    relleno.style.width = (max > 0 ? (g[cat] / max * 100) : 0) + '%';
+    relleno.style.background = PALETA[i % PALETA.length]; // mismos colores que la dona
+    barra.appendChild(relleno);
+
+    fila.appendChild(info);
+    fila.appendChild(barra);
+    cont.appendChild(fila);
+  });
+}
+
+/** Ingresos y gastos por día del mes en curso, del 1 hasta hoy (en COP).
+    Cada valor se convierte con la tasa de SU cuenta: la vista "Por mes" viene
+    ya convertida del backend, así que sin esto alternar Mes/Día cambiaba los
+    totales de la misma gráfica (y un gasto de US$ 20 sumaba 20 pesos). */
+function datosDiariosMes() {
+  var mesHoy = datos.hoy.substring(0, 7);
+  var diaHoy = Number(datos.hoy.substring(8, 10));
+  var porDia = {};
+  datos.movimientos.forEach(function (m) {
+    if (m.fecha.substring(0, 7) !== mesHoy) return;
+    var d = Number(m.fecha.substring(8, 10));
+    if (!porDia[d]) porDia[d] = { ingresos: 0, gastos: 0 };
+    var tasa = tasaDe(m.cuenta);
+    if (m.tipo === 'Ingreso') porDia[d].ingresos += m.valor * tasa;
+    if (m.tipo === 'Gasto') porDia[d].gastos += m.valor * tasa;
+  });
+  var dias = [];
+  for (var d = 1; d <= diaHoy; d++) {
+    dias.push({
+      dia: d,
+      ingresos: porDia[d] ? porDia[d].ingresos : 0,
+      gastos: porDia[d] ? porDia[d].gastos : 0
+    });
+  }
+  return dias;
+}
+
+// --- Barras: I vs G o Neto según vistaBarras, por mes o por día según granBarras
+function renderGraficaBarras() {
+  if (chartBarras) { chartBarras.destroy(); chartBarras = null; }
+
+  // Colores desde el tema: en oscuro son menos saturados y contrastan mejor
+  var VERDE = cssColor('--verde', '#188038');
+  var ROJO = cssColor('--rojo', '#C5221F');
+
+  var labels, datasets, titulo;
+  var opciones = {
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { boxWidth: 14, font: { size: 12 } } },
+      tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+    },
+    scales: {
+      y: { ticks: { callback: function (v) { return etiquetaCortaBase(v); } } }
+    }
+  };
+
+  if (granBarras === 'dia') {
+    // Por día solo tiene sentido el mes en curso (los chips de rango siguen
+    // mandando sobre la gráfica de categorías, por eso no se esconden)
+    var dias = datosDiariosMes();
+    var mesTxt = nombreMes(datos.hoy.substring(0, 7));
+    labels = dias.map(function (d) { return d.dia; });
+    if (vistaBarras === 'neto') {
+      titulo = 'Neto por día (' + mesTxt + ')';
+      var netosD = dias.map(function (d) { return d.ingresos - d.gastos; });
+      datasets = [{
+        label: 'Neto', data: netosD, borderRadius: 4,
+        backgroundColor: netosD.map(function (v) { return v >= 0 ? VERDE : ROJO; })
+      }];
+      opciones.plugins.legend.display = false;
+    } else {
+      titulo = 'Ingresos vs gastos por día (' + mesTxt + ')';
+      datasets = [
+        { label: 'Ingresos', data: dias.map(function (d) { return d.ingresos; }), backgroundColor: VERDE, borderRadius: 4 },
+        { label: 'Gastos', data: dias.map(function (d) { return d.gastos; }), backgroundColor: ROJO, borderRadius: 4 }
+      ];
+    }
+  } else {
+    var meses = datos.resumen.meses.slice(-rangoSel);
+    labels = meses.map(function (m) { return nombreMes(m.mes); });
+    if (vistaBarras === 'neto') {
+      titulo = 'Neto por mes (' + etiquetaRango() + ')';
+      var netosM = meses.map(function (m) { return m.ingresos - m.gastos; });
+      datasets = [{
+        label: 'Neto', data: netosM, borderRadius: 6,
+        backgroundColor: netosM.map(function (v) { return v >= 0 ? VERDE : ROJO; })
+      }];
+      opciones.plugins.legend.display = false;
+    } else {
+      titulo = 'Ingresos vs gastos (' + etiquetaRango() + ')';
+      datasets = [
+        { label: 'Ingresos', data: meses.map(function (m) { return m.ingresos; }), backgroundColor: VERDE, borderRadius: 6 },
+        { label: 'Gastos', data: meses.map(function (m) { return m.gastos; }), backgroundColor: ROJO, borderRadius: 6 }
+      ];
+    }
+  }
+
+  $('titulo-barras').textContent = titulo;
+  chartBarras = new Chart($('chart-barras'), {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: opciones
+  });
+}
+
+// ============================================================ HISTORIAL
+function renderFiltros() {
+  // Meses presentes en los movimientos
+  var meses = {};
+  datos.movimientos.forEach(function (m) { meses[m.fecha.substring(0, 7)] = true; });
+  llenarSelect($('fil-mes'), Object.keys(meses).sort().reverse(), 'Mes: todos', nombreMes);
+  llenarSelect($('fil-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), 'Cuenta: todas');
+  llenarSelect($('fil-categoria'), datos.categorias.map(function (c) { return c.categoria; }), 'Categoría: todas');
+}
+
+function llenarSelect(sel, valores, textoTodos, fmt) {
+  var actual = sel.value;
+  sel.innerHTML = '<option value="">' + textoTodos + '</option>';
+  valores.forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.textContent = fmt ? fmt(v) : v;
+    sel.appendChild(o);
+  });
+  sel.value = actual; // conserva el filtro si sigue existiendo
+}
+
+/** Minúsculas y sin tildes: así "cafe" encuentra "Café" y viceversa. */
+function normalizarTexto(t) {
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+function renderHistorial() {
+  var fMes = $('fil-mes').value, fCta = $('fil-cuenta').value;
+  var fTipo = $('fil-tipo').value, fCat = $('fil-categoria').value;
+  var busq = normalizarTexto($('fil-buscar').value.trim());
+
+  var lista = datos.movimientos.filter(function (m) {
+    if (fMes && m.fecha.substring(0, 7) !== fMes) return false;
+    if (fCta && m.cuenta !== fCta && m.cuentaDestino !== fCta) return false;
+    if (fTipo && m.tipo !== fTipo) return false;
+    if (fCat && m.categoria !== fCat) return false;
+    if (busq && normalizarTexto(m.descripcion + ' ' + m.categoria + ' ' +
+        m.cuenta + ' ' + m.cuentaDestino).indexOf(busq) < 0) return false;
+    return true;
+  });
+
+  // Resumen de lo filtrado: cuántos son y cuánto suman. Solo aparece cuando
+  // hay algún filtro activo (sin filtrar mezcla meses y solo estorba).
+  // Transferencias y pagos no suman: mueven plata, no la gastan (como el backend).
+  // Cada valor se pasa a COP con la tasa de su cuenta para no sumar peras con dólares.
+  var tIng = 0, tGas = 0;
+  lista.forEach(function (m) {
+    if (m.tipo === 'Ingreso') tIng += m.valor * tasaDe(m.cuenta);
+    if (m.tipo === 'Gasto') tGas += m.valor * tasaDe(m.cuenta);
+  });
+  var hayFiltro = !!(fMes || fCta || fTipo || fCat || busq);
+  var res = $('hist-resumen');
+  res.innerHTML = '';
+  res.hidden = !hayFiltro || lista.length === 0;
+  if (hayFiltro && lista.length > 0) {
+    [
+      { txt: lista.length + (lista.length === 1 ? ' movimiento' : ' movimientos'), clase: '' },
+      { txt: '+' + fmtBase(tIng), clase: 'verde' },
+      { txt: '−' + fmtBase(tGas), clase: 'rojo' },
+      { txt: 'Neto ' + fmtBase(tIng - tGas), clase: '' }
+    ].forEach(function (p, i) {
+      if (i > 0) res.appendChild(document.createTextNode(' · '));
+      var s = document.createElement('span');
+      if (p.clase) s.className = p.clase;
+      s.textContent = p.txt;
+      res.appendChild(s);
+    });
+  }
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  var cont = $('lista-movs');
+  cont.innerHTML = '';
+  if (lista.length === 0) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('buscar') +
+      'No hay movimientos con esos filtros</div>';
+    return;
+  }
+  pintarMovimientos(cont, lista, iconos);
+}
+
+/**
+ * Pinta una lista de movimientos (con encabezado por día) dentro de `cont`.
+ * La usan el Historial y la vista de detalle de cuenta.
+ */
+function pintarMovimientos(cont, lista, iconos) {
+  var diaActual = '';
+  lista.forEach(function (m) {
+    if (m.fecha !== diaActual) {
+      diaActual = m.fecha;
+      var t = document.createElement('div');
+      t.className = 'dia-titulo';
+      t.textContent = fechaBonita(m.fecha);
+      cont.appendChild(t);
+    }
+    var esDoble = (m.tipo === 'Transferencia' || m.tipo === 'Pago tarjeta');
+    var emojiCat = esDoble ? null : (iconos[m.categoria] || '🏷️');
+    var sub = esDoble ? (m.cuenta + ' → ' + m.cuentaDestino) : m.cuenta;
+    // Transferencia entre monedas: mostrar también lo que llegó al destino
+    if (esDoble && m.valorDestino > 0) {
+      sub += ' (' + fmtNativo(m.valorDestino, monedaDe(m.cuentaDestino)) + ')';
+    }
+    var clase = m.tipo === 'Ingreso' ? 'verde' : (m.tipo === 'Gasto' ? 'rojo' : '');
+    var signo = m.tipo === 'Ingreso' ? '+' : (m.tipo === 'Gasto' ? '−' : '');
+
+    // Nodos con textContent, no innerHTML: una descripción con "<" o "&"
+    // rompería el render (y aquí el texto lo escribe el usuario).
+    var d = document.createElement('div');
+    d.className = 'mov';
+
+    // Transferencias/pagos: icono SVG de UI; los gastos/ingresos: emoji de la
+    // categoría (los emojis quedan SOLO como icono de categoría).
+    var elIcono = document.createElement('div');
+    elIcono.className = 'icono';
+    if (esDoble) elIcono.innerHTML = icono(m.tipo === 'Pago tarjeta' ? 'tarjeta-cred' : 'transfer');
+    else elIcono.textContent = emojiCat;
+
+    var centro = document.createElement('div');
+    centro.className = 'centro';
+    var elDesc = document.createElement('div');
+    elDesc.className = 'desc';
+    elDesc.textContent = m.descripcion || m.categoria || m.tipo;
+    var elSub = document.createElement('div');
+    elSub.className = 'sub';
+    elSub.textContent = sub;
+    centro.appendChild(elDesc);
+    centro.appendChild(elSub);
+
+    var elMonto = document.createElement('div');
+    elMonto.className = 'monto ' + clase;
+    elMonto.textContent = signo + fmtNativo(m.valor, monedaDe(m.cuenta));
+
+    d.appendChild(elIcono);
+    d.appendChild(centro);
+    d.appendChild(elMonto);
+    d.onclick = function () { abrirModal(m); };
+    cont.appendChild(d);
+  });
+}
+
+// ============================================================ MODAL DE EDICIÓN
+function abrirModal(m) {
+  movEditando = m;
+  llenarSelect($('ed-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
+  llenarSelect($('ed-destino'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
+  llenarSelect($('ed-categoria'), datos.categorias.map(function (c) { return c.categoria; }), '— sin categoría —');
+
+  $('ed-tipo').value = m.tipo;
+  $('ed-valor').value = montoATexto(m.valor);
+  $('ed-fecha').value = m.fecha;
+  $('ed-cuenta').value = m.cuenta;
+  $('ed-destino').value = m.cuentaDestino;
+  $('ed-categoria').value = m.categoria;
+  $('ed-desc').value = m.descripcion;
+  $('ed-valor-destino').value = m.valorDestino > 0 ? montoATexto(m.valorDestino) : '';
+  ajustarModalTipo();
+  $('modal-fondo').hidden = false;
+}
+function cerrarModal() { $('modal-fondo').hidden = true; movEditando = null; }
+function ajustarModalTipo() {
+  var t = $('ed-tipo').value;
+  var esDoble = (t === 'Transferencia' || t === 'Pago tarjeta');
+  $('ed-bloque-destino').style.display = esDoble ? 'block' : 'none';
+  // El "llega al destino" solo aplica entre cuentas de monedas distintas
+  var distintas = esDoble && $('ed-cuenta').value && $('ed-destino').value &&
+    monedaDe($('ed-cuenta').value) !== monedaDe($('ed-destino').value);
+  $('ed-bloque-valor-destino').hidden = !distintas;
+  if (distintas) {
+    $('ed-lbl-valor-destino').textContent =
+      'Llega a ' + $('ed-destino').value + ' (' + monedaDe($('ed-destino').value) + ')';
+  }
+}
+
+function guardarEdicion() {
+  var valor = parsearMonto($('ed-valor').value);
+  if (!(valor > 0)) return toast('El monto debe ser mayor que cero', 'error');
+  var t = $('ed-tipo').value;
+  var esDoble = (t === 'Transferencia' || t === 'Pago tarjeta');
+  var conValorDestino = !$('ed-bloque-valor-destino').hidden;
+  var valorDestino = conValorDestino ? parsearMonto($('ed-valor-destino').value) : '';
+  if (conValorDestino && !(valorDestino > 0)) {
+    return toast('Escribe cuánto llega a ' + $('ed-destino').value, 'error');
+  }
+  var id = movEditando.id; // capturar ANTES de cerrar el modal (cerrarModal borra movEditando)
+  cerrarModal();
+  llamar('editarMovimiento', [{
+    id: id,
+    fecha: $('ed-fecha').value,
+    cuenta: $('ed-cuenta').value,
+    tipo: t,
+    cuentaDestino: esDoble ? $('ed-destino').value : '',
+    categoria: $('ed-categoria').value,
+    descripcion: $('ed-desc').value.trim(),
+    valor: valor,
+    valorDestino: valorDestino
+  }]);
+}
+
+function borrarEdicion() {
+  if (!confirm('¿Borrar este movimiento definitivamente?')) return;
+  var id = movEditando.id;
+  cerrarModal();
+  llamar('borrarMovimiento', [id]);
+}
+
+// ============================================================ AJUSTAR SALDO
+/* Cuadra una cuenta contra el saldo real del banco. El campo arranca con el
+   saldo que la app calcula: así el formato (y el signo, en la tarjeta) queda
+   claro y solo hay que corregir lo que sobre o falte. */
+function abrirAjuste(c) {
+  cuentaAjustando = c;
+  $('ajuste-titulo').textContent = 'Cuadrar ' + c.cuenta;
+  $('ajuste-calculado').textContent = fmtNativo(c.saldo, c.moneda);
+  $('aj-real').value = montoATexto(c.saldo);
+  // Deuda = la definida así en la hoja (SaldoInicial negativo), no una cuenta
+  // que quedó en rojo de paso: si no, el aviso saldría donde no toca.
+  $('ajuste-nota').textContent = (c.saldoInicial < 0
+    ? 'Es una deuda: el saldo va en negativo (−63.226 = debes 63.226).'
+    : 'Escribe el saldo que muestra el banco ahora mismo.') +
+    (c.moneda !== 'COP' ? ' Todo en ' + c.moneda + ', la moneda de la cuenta.' : '');
+  actualizarDifAjuste();
+  // Los campos van en la moneda de la cuenta: que el símbolo no mienta
+  $('aj-simbolo').textContent = simboloDe(c.moneda);
+  $('si-simbolo').textContent = simboloDe(c.moneda);
+
+  // Sección "Editar cuenta": siempre arranca plegada y con los valores actuales
+  $('si-bloque').hidden = true;
+  $('si-fecha').textContent = c.fechaCorte;
+  $('si-valor').value = montoATexto(c.saldoInicial);
+  $('ec-nombre').value = c.cuenta;
+  $('ec-nota').value = c.nota || '';
+  ecColorSel = c.color;
+  var pintarPaletaEc = function () {
+    renderPaletaEn('ec-paleta', ecColorSel, function (col) { ecColorSel = col; pintarPaletaEc(); });
+  };
+  pintarPaletaEc();
+  ecMonedaSel = c.moneda || 'COP';
+  pintarMonedasEc();
+  // Eliminar solo se ofrece si NINGÚN movimiento usa la cuenta (el servidor revalida)
+  $('si-eliminar').hidden = c.enUso !== false;
+
+  $('modal-ajuste').hidden = false;
+}
+
+function eliminarCuentaActual() {
+  var c = cuentaAjustando;
+  if (!confirm('¿Eliminar la cuenta "' + c.cuenta + '"? No tiene movimientos, así que no se pierde nada más.')) return;
+  cerrarAjuste();
+  llamar('eliminarCuenta', [c.cuenta]);
+}
+function cerrarAjuste() { $('modal-ajuste').hidden = true; cuentaAjustando = null; }
+
+function guardarSaldoInicial() {
+  var c = cuentaAjustando; // capturar antes de cerrar
+  var valor = parsearMonto($('si-valor').value);
+  if (isNaN(valor)) return toast('Escribe el saldo inicial', 'error');
+  var nombre = $('ec-nombre').value.trim();
+  if (!nombre) return toast('El nombre no puede quedar vacío', 'error');
+
+  var cambios = {
+    nombre: nombre,
+    saldoInicial: valor,
+    color: ecColorSel,
+    nota: $('ec-nota').value.trim(),
+    moneda: ecMonedaSel
+  };
+  var igual = nombre === c.cuenta && valor === c.saldoInicial &&
+              ecColorSel === c.color && cambios.nota === (c.nota || '') &&
+              ecMonedaSel === (c.moneda || 'COP');
+  if (igual) { cerrarAjuste(); return; }
+
+  var msj = '¿Guardar los cambios de "' + c.cuenta + '"?';
+  if (valor !== c.saldoInicial) {
+    // El valor viejo va en la moneda VIEJA y el nuevo en la nueva: si no, al
+    // pasar de COP a USD el mensaje decía "US$ 500.000 → US$ 600.000".
+    msj += '\n· Saldo inicial: ' + fmtNativo(c.saldoInicial, c.moneda) + ' → ' + fmtNativo(valor, ecMonedaSel) + ' (el saldo actual se recalcula)';
+  }
+  if (nombre !== c.cuenta) msj += '\n· Nombre → "' + nombre + '" (se actualiza en todo el historial)';
+  if (ecMonedaSel !== (c.moneda || 'COP')) {
+    msj += '\n· Moneda → ' + ecMonedaSel + ' (los números guardados NO se convierten: solo cambia en qué moneda se leen)';
+  }
+  if (!confirm(msj)) return;
+
+  cerrarAjuste();
+  llamar('editarCuenta', [c.cuenta, cambios]);
+}
+
+/** Muestra en vivo el movimiento que se va a crear, antes de confirmar. */
+function actualizarDifAjuste() {
+  if (!cuentaAjustando) return;
+  var real = parsearMonto($('aj-real').value);
+  var elDif = $('ajuste-dif'), elExplica = $('ajuste-explica');
+
+  if (isNaN(real)) {
+    elDif.textContent = '—';
+    elDif.className = '';
+    elExplica.textContent = '';
+    $('aj-guardar').disabled = true;
+    return;
+  }
+  var dif = real - cuentaAjustando.saldo;
+  if (Math.abs(dif) < 0.01) dif = 0; // si no, los flotantes pintan un feo "$ -0"
+
+  var mon = cuentaAjustando.moneda;
+  $('aj-guardar').disabled = false;
+  elDif.textContent = (dif > 0 ? '+' : '') + fmtNativo(dif, mon);
+  elDif.className = dif === 0 ? '' : (dif > 0 ? 'verde' : 'rojo');
+
+  if (dif === 0) {
+    elExplica.textContent = '✔ La cuenta ya está cuadrada, no se creará ningún movimiento.';
+  } else {
+    elExplica.textContent = 'Se creará un ' + (dif > 0 ? 'Ingreso' : 'Gasto') + ' de ' +
+      fmtNativo(Math.abs(dif), mon) + ' con categoría Ajuste, con fecha de hoy.';
+  }
+}
+
+function guardarAjuste() {
+  var real = parsearMonto($('aj-real').value);
+  if (isNaN(real)) return toast('Escribe el saldo real', 'error');
+  var cuenta = cuentaAjustando.cuenta; // capturar antes de cerrar
+  cerrarAjuste();
+  llamar('ajustarSaldo', [cuenta, real]);
+}
+
+// ============================================================ MESES
+/** Mes ('yyyy-MM') de la fecha de corte más antigua: antes de eso no hay saldos. */
+function corteMesGlobal() {
+  var corteMin = null;
+  datos.cuentas.forEach(function (c) {
+    if (!corteMin || c.fechaCorte < corteMin) corteMin = c.fechaCorte;
+  });
+  return (corteMin || '').substring(0, 7);
+}
+
+/** Meses que vale la pena listar: desde la fecha de corte, o con movimientos. */
+function mesesVisibles() {
+  var corteMes = corteMesGlobal();
+  return datos.resumen.meses.filter(function (m) {
+    return m.mes >= corteMes || m.ingresos > 0 || m.gastos > 0;
+  });
+}
+
+function renderMeses() {
+  var cont = $('lista-meses');
+  cont.innerHTML = '';
+  var lista = mesesVisibles().slice().reverse(); // más reciente arriba
+  lista.forEach(function (m) {
+    var neto = m.ingresos - m.gastos;
+    var d = document.createElement('div');
+    d.className = 'mov';
+
+    var elIcono = document.createElement('div');
+    elIcono.className = 'icono';
+    elIcono.innerHTML = icono('calendario');
+    var centro = document.createElement('div');
+    centro.className = 'centro';
+    var desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = nombreMes(m.mes) + (m.mes === datos.hoy.substring(0, 7) ? ' (en curso)' : '');
+    var sub = document.createElement('div');
+    sub.className = 'sub';
+    // Antes del corte no hay datos de saldos: mostrar un número sería mentir
+    sub.textContent = m.mes < corteMesGlobal()
+      ? 'Antes del corte — sin datos de saldos'
+      : 'Empezó con ' + fmtBase(m.inicio);
+    centro.appendChild(desc);
+    centro.appendChild(sub);
+    var monto = document.createElement('div');
+    monto.className = 'monto ' + (neto > 0 ? 'verde' : (neto < 0 ? 'rojo' : ''));
+    monto.textContent = (neto > 0 ? '+' : '') + fmtBase(neto);
+    monto.title = 'Neto del mes';
+
+    d.appendChild(elIcono);
+    d.appendChild(centro);
+    d.appendChild(monto);
+    d.onclick = function () { abrirMes(m); };
+    cont.appendChild(d);
+  });
+
+  if ($('vista-meses').classList.contains('activa')) renderEvolucion();
+}
+
+var chartComposicion = null, chartCatsTiempo = null;
+
+function renderEvolucion() {
+  // Estas partes son HTML puro (no dependen de Chart.js): siempre se pintan.
+  renderTablaMeses();
+  renderInsights();
+  if (typeof Chart === 'undefined') return; // el aviso de CDN ya vive en el Panel
+
+  // (1) Línea de patrimonio grande, con su propio rango
+  document.querySelectorAll('#rango-evol .chip').forEach(function (b) {
+    b.classList.toggle('activa', Number(b.dataset.evrango) === rangoEvol);
+  });
+  $('titulo-evolucion').textContent = 'Patrimonio ' +
+    (rangoEvol === 1 ? '(este mes, día a día)' : '(últimos ' + rangoEvol + ' meses)');
+  if (chartEvolucion) { chartEvolucion.destroy(); chartEvolucion = null; }
+  chartEvolucion = dibujarLineaPatrimonio('chart-evolucion', rangoEvol, 'evolucion-vacia');
+
+  renderComposicion();
+  renderCatsTiempo();
+}
+
+/** Fin de patrimonio de un mes = inicio del mes siguiente (o patrimonio si es el actual). */
+function finDeMes_(mes) {
+  var todos = datos.resumen.meses;
+  for (var i = 0; i < todos.length; i++) {
+    if (todos[i].mes === mes) {
+      return (i + 1 < todos.length) ? todos[i + 1].inicio : datos.patrimonio;
+    }
+  }
+  return datos.patrimonio;
+}
+
+/** (2) Tabla mes a mes: inicio, ingresos, gastos, neto, fin, % cambio.
+    Ingresos/gastos/neto se conocen siempre; inicio/fin/% solo desde el corte. */
+function renderTablaMeses() {
+  var corteMes = corteMesGlobal();
+  var lista = mesesVisibles().slice().reverse(); // reciente arriba
+  var mesHoy = datos.hoy.substring(0, 7);
+  var filas = lista.map(function (m) {
+    var neto = m.ingresos - m.gastos;
+    var clsNeto = neto > 0 ? 'verde' : (neto < 0 ? 'rojo' : '');
+    var conSaldos = m.mes >= corteMes; // antes del corte no hay saldos fiables
+    var inicioTxt = '—', finTxt = '—', pctTxt = '—', clasePct = '';
+    if (conSaldos) {
+      var fin = finDeMes_(m.mes);
+      var pct = m.inicio !== 0 ? Math.round((fin - m.inicio) / Math.abs(m.inicio) * 100) : null;
+      clasePct = pct === null ? '' : (pct >= 0 ? 'verde' : 'rojo');
+      inicioTxt = fmtBase(m.inicio);
+      finTxt = fmtBase(fin);
+      pctTxt = pct === null ? '—' : (pct >= 0 ? '+' : '') + pct + '%';
+    }
+    return '<tr class="' + (m.mes === mesHoy ? 'mes-actual' : '') + '">' +
+      '<td>' + nombreMes(m.mes) + (m.mes === mesHoy ? ' •' : '') + '</td>' +
+      '<td>' + inicioTxt + '</td>' +
+      '<td class="verde">' + fmtBase(m.ingresos) + '</td>' +
+      '<td class="rojo">' + fmtBase(m.gastos) + '</td>' +
+      '<td class="' + clsNeto + '">' + (neto > 0 ? '+' : '') + fmtBase(neto) + '</td>' +
+      '<td>' + finTxt + '</td>' +
+      '<td class="' + clasePct + '">' + pctTxt + '</td>' +
+    '</tr>';
+  });
+  // Sin nombres de usuario aquí: solo meses y números, innerHTML es seguro
+  $('tabla-meses').innerHTML =
+    '<thead><tr><th>Mes</th><th>Inicio</th><th>Ingresos</th><th>Gastos</th>' +
+    '<th>Neto</th><th>Fin</th><th>%</th></tr></thead><tbody>' + filas.join('') + '</tbody>';
+}
+
+/** (3) Tarjetas de insight: mejor/peor mes, promedio de gasto 3M, tasa de ahorro. */
+function renderInsights() {
+  var mesHoy = datos.hoy.substring(0, 7);
+  // Ingresos/gastos/neto se conocen para todo mes con actividad, así que
+  // mejor/peor mes y el promedio pueden mirar más atrás que la fecha de corte.
+  var conDatos = mesesVisibles();
+
+  function tarjeta(k, v, s, clase) {
+    return '<div class="insight"><div class="k">' + k + '</div>' +
+      '<div class="v ' + (clase || '') + '">' + v + '</div>' +
+      '<div class="s">' + (s || '') + '</div></div>';
+  }
+
+  // Mejor y peor mes por neto (solo meses ya cerrados: el actual va a medias)
+  var cerrados = conDatos.filter(function (m) { return m.mes !== mesHoy; });
+  var mejor = null, peor = null;
+  cerrados.forEach(function (m) {
+    var neto = m.ingresos - m.gastos;
+    if (!mejor || neto > (mejor.ingresos - mejor.gastos)) mejor = m;
+    if (!peor || neto < (peor.ingresos - peor.gastos)) peor = m;
+  });
+
+  // Promedio de gasto de los últimos 3 meses cerrados
+  var ult3 = cerrados.slice(-3);
+  var promGasto = ult3.length ? ult3.reduce(function (a, m) { return a + m.gastos; }, 0) / ult3.length : 0;
+
+  // Tasa de ahorro del mes en curso: (ingresos − gastos) / ingresos
+  var act = datos.resumen.mesActual;
+  var tasaAhorro = act.ingresos > 0 ? Math.round((act.ingresos - act.gastos) / act.ingresos * 100) : null;
+
+  var html = '';
+  html += tarjeta('Mejor mes', mejor ? '+' + fmtBase(mejor.ingresos - mejor.gastos) : '—',
+    mejor ? nombreMes(mejor.mes) : 'sin datos', 'verde');
+  html += tarjeta('Peor mes', peor ? fmtBase(peor.ingresos - peor.gastos) : '—',
+    peor ? nombreMes(peor.mes) : 'sin datos', peor && (peor.ingresos - peor.gastos) < 0 ? 'rojo' : '');
+  html += tarjeta('Gasto prom. 3M', ult3.length ? fmtBase(Math.round(promGasto)) : '—',
+    ult3.length ? 'últimos ' + ult3.length + ' meses' : 'sin datos');
+  html += tarjeta('Tasa de ahorro', tasaAhorro === null ? '—' : tasaAhorro + '%',
+    'este mes', tasaAhorro === null ? '' : (tasaAhorro >= 0 ? 'verde' : 'rojo'));
+  $('insights').innerHTML = html;
+}
+
+/** (4) Composición del patrimonio por cuenta: hoy vs hace 3 y 6 meses (barras apiladas). */
+function renderComposicion() {
+  if (chartComposicion) { chartComposicion.destroy(); chartComposicion = null; }
+  var activos = cuentasActivas();
+  var todos = datos.resumen.meses; // cronológico, 12
+  var idxHoy = todos.length - 1;
+
+  // Snapshots disponibles: hace 6m, hace 3m, hoy (los que existan en el rango)
+  var snaps = [];
+  if (idxHoy - 6 >= 0) snaps.push({ etq: 'Hace 6m', mes: todos[idxHoy - 6] });
+  if (idxHoy - 3 >= 0) snaps.push({ etq: 'Hace 3m', mes: todos[idxHoy - 3] });
+  snaps.push({ etq: 'Hoy', mes: null });
+
+  var vacia = activos.length === 0 || snaps.length < 2;
+  $('composicion-vacia').hidden = !vacia;
+  $('chart-composicion').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+
+  var datasets = activos.map(function (c, i) {
+    return {
+      label: c.cuenta,
+      backgroundColor: c.color || PALETA[i % PALETA.length],
+      borderRadius: 4,
+      data: snaps.map(function (s) {
+        // COP: snapshot pasado usa inicioPorCuenta; "Hoy" usa el saldo actual
+        var nativo = s.mes ? (s.mes.inicioPorCuenta[c.cuenta] || 0) : c.saldo;
+        return Math.max(0, nativo) * (c.tasa !== undefined ? c.tasa : 1);
+      })
+    };
+  });
+
+  chartComposicion = new Chart($('chart-composicion'), {
+    type: 'bar',
+    data: { labels: snaps.map(function (s) { return s.etq; }), datasets: datasets },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, ticks: { callback: function (v) { return etiquetaCortaBase(v); } } }
+      }
+    }
+  });
+}
+
+/** (5) Gasto de las 3–5 categorías top en el tiempo (líneas por mes). */
+function renderCatsTiempo() {
+  if (chartCatsTiempo) { chartCatsTiempo.destroy(); chartCatsTiempo = null; }
+  var meses = datos.resumen.meses.slice(-6); // últimos 6 meses, legible
+  // Total por categoría en el rango para elegir las top
+  var totales = {};
+  meses.forEach(function (m) {
+    Object.keys(m.gastosPorCategoria).forEach(function (cat) {
+      totales[cat] = (totales[cat] || 0) + m.gastosPorCategoria[cat];
+    });
+  });
+  var top = Object.keys(totales).sort(function (a, b) { return totales[b] - totales[a]; }).slice(0, 5);
+  var vacia = top.length === 0;
+  $('cats-tiempo-vacia').hidden = !vacia;
+  $('chart-cats-tiempo').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  var datasets = top.map(function (cat, i) {
+    return {
+      label: (iconos[cat] || '') + ' ' + cat,
+      data: meses.map(function (m) { return m.gastosPorCategoria[cat] || 0; }),
+      borderColor: PALETA[i % PALETA.length],
+      backgroundColor: PALETA[i % PALETA.length],
+      tension: 0.3, pointRadius: 2, borderWidth: 2, fill: false
+    };
+  });
+  chartCatsTiempo = new Chart($('chart-cats-tiempo'), {
+    type: 'line',
+    data: { labels: meses.map(function (m) { return nombreMes(m.mes); }), datasets: datasets },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+      },
+      scales: { y: { ticks: { callback: function (v) { return etiquetaCortaBase(v); } } } }
+    }
+  });
+}
+
+function abrirMes(m) {
+  mesAbierto = m;
+  ajusteMesCuenta = null;
+  ajusteMesModo = 'mov';
+  var antesDelCorte = m.mes < corteMesGlobal();
+  $('mes-titulo').textContent = nombreMes(m.mes);
+  $('mes-inicio').textContent = antesDelCorte ? '—' : fmtBase(m.inicio);
+  $('mes-ingresos').textContent = fmtBase(m.ingresos);
+  $('mes-gastos').textContent = fmtBase(m.gastos);
+  var neto = m.ingresos - m.gastos;
+  $('mes-neto').textContent = fmtBase(neto);
+  $('mes-neto').className = neto >= 0 ? 'verde' : 'rojo';
+  $('mes-ajuste').hidden = true;
+
+  // Una fila por cuenta. Tres casos según el mes y la fecha de corte:
+  //  - mes posterior al corte  -> "⚖️ Ajustar" (movimiento el último día del mes anterior)
+  //  - mes DEL corte           -> el inicio ES el saldo inicial -> "✏️ Saldo inicial"
+  //  - mes anterior al corte   -> sin dato (está dentro del saldo inicial)
+  var cont = $('mes-cuentas');
+  cont.innerHTML = '';
+  var fechaAjuste = ultimoDiaMesAnteriorCli(m.mes);
+  var huboSinDato = false;
+  datos.cuentas.forEach(function (c) {
+    var fila = document.createElement('div');
+    fila.className = 'ajuste-fila';
+    var nom = document.createElement('span');
+    nom.textContent = c.cuenta;
+    var der = document.createElement('b');
+    fila.appendChild(nom);
+    fila.appendChild(der);
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-mini';
+    if (fechaAjuste >= c.fechaCorte) {
+      der.textContent = fmtNativo(m.inicioPorCuenta[c.cuenta], c.moneda);
+      btn.textContent = '⚖️ Ajustar';
+      btn.onclick = function () { elegirAjusteMes(c, 'mov'); };
+      fila.appendChild(btn);
+    } else if (m.mes === c.fechaCorte.substring(0, 7)) {
+      der.textContent = fmtNativo(c.saldoInicial, c.moneda);
+      btn.textContent = '✏️ Saldo inicial';
+      btn.onclick = function () { elegirAjusteMes(c, 'si'); };
+      fila.appendChild(btn);
+    } else {
+      der.textContent = '—';
+      huboSinDato = true;
+    }
+    cont.appendChild(fila);
+  });
+  $('mes-nota').textContent = huboSinDato
+    ? 'Las cuentas con "—" no tienen datos de este mes: es anterior a su fecha de corte, así que ya está contenido en su saldo inicial.'
+    : (m.mes === corteMesGlobal()
+        ? 'Este es el mes de la fecha de corte: su inicio es el saldo inicial de cada cuenta, editable con ✏️.'
+        : 'El ajuste crea un movimiento el ' + fechaAjuste + ' para que este mes empiece con el valor que digas.');
+  $('modal-mes').hidden = false;
+}
+function cerrarMes() { $('modal-mes').hidden = true; mesAbierto = null; ajusteMesCuenta = null; }
+
+function elegirAjusteMes(c, modo) {
+  ajusteMesCuenta = c;
+  ajusteMesModo = modo;
+  var base = modo === 'si' ? c.saldoInicial : mesAbierto.inicioPorCuenta[c.cuenta];
+  $('mes-ajuste-titulo').textContent = modo === 'si'
+    ? 'Saldo inicial de ' + c.cuenta + ' (' + c.fechaCorte + ')'
+    : 'Inicio real de ' + c.cuenta + ' en ' + nombreMes(mesAbierto.mes);
+  $('mes-ajuste-valor').value = montoATexto(base);
+  $('mes-ajuste-simbolo').textContent = simboloDe(c.moneda);
+  $('mes-ajuste').hidden = false;
+  actualizarDifMes();
+  $('mes-ajuste-valor').focus();
+}
+
+function actualizarDifMes() {
+  if (!ajusteMesCuenta || !mesAbierto) return;
+  var real = parsearMonto($('mes-ajuste-valor').value);
+  var elDif = $('mes-ajuste-dif'), elExplica = $('mes-ajuste-explica');
+  if (isNaN(real)) {
+    elDif.textContent = '—'; elDif.className = ''; elExplica.textContent = '';
+    $('mes-ajuste-guardar').disabled = true;
+    return;
+  }
+  var base = ajusteMesModo === 'si'
+    ? ajusteMesCuenta.saldoInicial
+    : mesAbierto.inicioPorCuenta[ajusteMesCuenta.cuenta];
+  var dif = real - base;
+  if (Math.abs(dif) < 0.01) dif = 0;
+  var mon = ajusteMesCuenta.moneda;
+  $('mes-ajuste-guardar').disabled = false;
+  elDif.textContent = (dif > 0 ? '+' : '') + fmtNativo(dif, mon);
+  elDif.className = dif === 0 ? '' : (dif > 0 ? 'verde' : 'rojo');
+  if (dif === 0) {
+    elExplica.textContent = '✔ Ya está cuadrado, no se cambiará nada.';
+  } else if (ajusteMesModo === 'si') {
+    elExplica.textContent = 'Se cambiará el saldo inicial de ' + ajusteMesCuenta.cuenta +
+      ' a ' + fmtNativo(real, mon) + '; el saldo actual se recalcula solo (no crea movimientos).';
+  } else {
+    elExplica.textContent = 'Se creará un ' + (dif > 0 ? 'Ingreso' : 'Gasto') + ' de ' + fmtNativo(Math.abs(dif), mon) +
+      ' en ' + ajusteMesCuenta.cuenta + ' con fecha ' + ultimoDiaMesAnteriorCli(mesAbierto.mes) +
+      ' (categoría Ajuste).';
+  }
+}
+
+function guardarAjusteMes() {
+  var real = parsearMonto($('mes-ajuste-valor').value);
+  if (isNaN(real)) return toast('Escribe el saldo con el que empezó', 'error');
+  var cuenta = ajusteMesCuenta.cuenta, mes = mesAbierto.mes, modo = ajusteMesModo;
+  cerrarMes();
+  if (modo === 'si') llamar('editarCuenta', [cuenta, { saldoInicial: real }]);
+  else llamar('ajustarInicioMes', [cuenta, mes, real]);
+}
+
+// ============================================================ DETALLE DE CUENTA
+var cuentaDetalle = null; // nombre de la cuenta abierta en la subvista
+var chartCuenta = null;
+var rangoCuenta = Number(localStorage.getItem('rangoCuenta')) || 3;
+if ([1, 3, 6, 12].indexOf(rangoCuenta) < 0) rangoCuenta = 3;
+
+/** Abrir es solo poner el hash: así el botón atrás del navegador cierra la vista. */
+function abrirCuenta(c) {
+  location.hash = '#cuenta/' + encodeURIComponent(c.cuenta);
+}
+
+/** Sincroniza la subvista con el hash (#cuenta/Nombre o #registrar). */
+function manejarHash() {
+  if (!datos) return;
+  var h = decodeURIComponent(location.hash || '');
+  if (h.indexOf('#cuenta/') === 0) {
+    var nombre = h.substring(8);
+    if (datos.cuentas.some(function (c) { return c.cuenta === nombre; })) {
+      cuentaDetalle = nombre;
+      irA('cuenta');
+      return;
+    }
+  }
+  if (h === '#registrar') { irA('registrar'); return; }
+  // Hash vacío o inválido: si estábamos en una subvista, volver a la base
+  if (vistaActual === 'cuenta' || vistaActual === 'registrar') {
+    cuentaDetalle = null;
+    irA(vistaBase);
+  }
+}
+
+function renderCuentaDetalle() {
+  var c = cuentaPorNombre(cuentaDetalle);
+  if (!c) { cuentaDetalle = null; irA('resumen'); return; }
+  $('titulo-vista').textContent = c.cuenta;
+
+  $('cd-hero').style.setProperty('--color-cuenta', c.color);
+  var esDeuda = c.tipo === 'Deuda';
+  $('cd-tipo').textContent = (esDeuda ? 'Deuda — debes' : 'Saldo') +
+    (c.moneda !== monedaBase ? ' (' + c.moneda + ')' : '');
+  var saldoMostrar = (esDeuda && c.saldo <= 0) ? -c.saldo : c.saldo;
+  // Hero: cifra clave, con el código de moneda en gris
+  $('cd-saldo').innerHTML = fmtNativo(saldoMostrar, c.moneda, 'html');
+  $('cd-saldo').className = 'valor-grande ' + ((esDeuda && c.saldo <= 0) || c.saldo < 0 ? 'rojo' : '');
+
+  var eq = $('cd-equiv');
+  if (c.moneda !== monedaBase) {
+    eq.hidden = false;
+    eq.textContent = textoEquivalente(c, true);
+  } else {
+    // Limpiar además de ocultar: si no, al volver de una cuenta en dólares
+    // el texto viejo quedaba ahí (y con .mini{display:block} llegaba a verse)
+    eq.hidden = true;
+    eq.textContent = '';
+  }
+  $('cd-nota').textContent = c.nota || '';
+
+  document.querySelectorAll('#cd-rangos .chip').forEach(function (b) {
+    b.classList.toggle('activa', Number(b.dataset.cdrango) === rangoCuenta);
+  });
+
+  renderGraficaCuenta(c);
+
+  // Ingresos y gastos del mes en curso de ESTA cuenta (en su moneda)
+  var mesHoy = datos.hoy.substring(0, 7);
+  var ing = 0, gas = 0;
+  datos.movimientos.forEach(function (m) {
+    if (m.fecha.substring(0, 7) !== mesHoy || m.cuenta !== c.cuenta) return;
+    if (m.tipo === 'Ingreso') ing += m.valor;
+    if (m.tipo === 'Gasto') gas += m.valor;
+  });
+  $('cd-titulo-mes').textContent = 'Este mes en ' + c.cuenta;
+  $('cd-ingresos').textContent = fmtNativo(ing, c.moneda);
+  $('cd-gastos').textContent = fmtNativo(gas, c.moneda);
+
+  // Últimos movimientos que tocan la cuenta (editar = tocar la fila, como siempre)
+  var iconos = {};
+  datos.categorias.forEach(function (x) { iconos[x.categoria] = x.icono; });
+  var lista = datos.movimientos.filter(function (m) {
+    return m.cuenta === c.cuenta || m.cuentaDestino === c.cuenta;
+  }).slice(0, 15);
+  var cont = $('cd-movs');
+  cont.innerHTML = '';
+  if (!lista.length) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('historial') +
+      'Sin movimientos todavía</div>';
+  } else {
+    pintarMovimientos(cont, lista, iconos);
+  }
+}
+
+/** Línea del saldo día a día de la cuenta, con degradado de su color. */
+function renderGraficaCuenta(c) {
+  if (chartCuenta) { chartCuenta.destroy(); chartCuenta = null; }
+  if (typeof Chart === 'undefined') return;
+
+  var h = datos.historia || { fechas: [], porCuenta: {} };
+  var n = { 1: 30, 3: 90, 6: 180, 12: 365 }[rangoCuenta] || 90;
+  var fechas = h.fechas.slice(-n);
+  var valores = (h.porCuenta[c.cuenta] || []).slice(-n);
+  // Los null del principio son días anteriores al corte de la cuenta: fuera
+  var ini = 0;
+  while (ini < valores.length && valores[ini] === null) ini++;
+  fechas = fechas.slice(ini);
+  valores = valores.slice(ini);
+
+  var vacia = valores.length < 2;
+  $('cd-graf-vacia').hidden = !vacia;
+  $('chart-cuenta').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+  $('cd-titulo-graf').textContent = 'Saldo día a día (' +
+    (rangoCuenta === 1 ? 'último mes' : 'últimos ' + rangoCuenta + ' meses') + ')';
+
+  var ctx = $('chart-cuenta').getContext('2d');
+  var alto = $('chart-cuenta').parentElement.clientHeight || 220;
+  var grad = ctx.createLinearGradient(0, 0, 0, alto);
+  grad.addColorStop(0, hexA(c.color, 0.35));
+  grad.addColorStop(1, hexA(c.color, 0.02));
+
+  var etiquetas = fechas.map(function (f) {
+    return Number(f.substring(8, 10)) + ' ' + MESES[Number(f.substring(5, 7)) - 1];
+  });
+  chartCuenta = new Chart($('chart-cuenta'), {
+    type: 'line',
+    data: {
+      labels: etiquetas,
+      datasets: [{
+        data: valores,
+        borderColor: c.color, backgroundColor: grad, fill: true,
+        tension: 0.3, pointRadius: 0, pointHitRadius: 14, borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: function (items) { return fechaBonita(fechas[items[0].dataIndex]); },
+          label: function (x) { return ' ' + fmtNativo(x.parsed.y, c.moneda); },
+          afterLabel: function (x) {
+            if (x.dataIndex === 0) return '';
+            var dif = x.parsed.y - x.dataset.data[x.dataIndex - 1];
+            if (Math.abs(dif) < 0.01) return '';
+            return (dif >= 0 ? ' ↑ +' : ' ↓ −') + montoATexto(Math.abs(dif)) + ' vs el día anterior';
+          }
+        } }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        y: { ticks: { callback: function (v) { return (v / 1000).toLocaleString('es-CO') + 'k'; } } }
+      }
+    }
+  });
+}
+
+// ============================================================ PRESUPUESTOS
+/** Gastos por categoría del mes EN CURSO (último de los 12 del resumen). */
+function gastoMesActualPorCategoria() {
+  var meses = datos.resumen.meses;
+  return meses[meses.length - 1].gastosPorCategoria || {};
+}
+
+/** Tarjeta del Panel: una barra de progreso por categoría presupuestada. */
+function renderPresupuestos() {
+  var cont = $('lista-presup');
+  cont.innerHTML = '';
+  var lista = (datos.presupuestos || []).slice();
+  var verTodos = $('presup-vertodos');
+  $('presup-vacio').hidden = lista.length > 0;
+  if (!lista.length) { verTodos.hidden = true; return; }
+
+  var g = gastoMesActualPorCategoria();
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  // Los más apretados arriba: es lo que interesa vigilar
+  lista.sort(function (a, b) {
+    return (g[b.categoria] || 0) / b.tope - (g[a.categoria] || 0) / a.tope;
+  });
+
+  // El Panel muestra solo el top 3 (lo que urge vigilar); "Ver todos" despliega
+  // el resto sin salir del Panel. La gestión completa vive en Ajustes.
+  var TOP = 3;
+  var visibles = presupExpandido ? lista : lista.slice(0, TOP);
+  verTodos.hidden = lista.length <= TOP;
+  verTodos.textContent = presupExpandido ? 'Ver menos' : 'Ver todos (' + lista.length + ')';
+
+  visibles.forEach(function (p) {
+    var gastado = g[p.categoria] || 0;
+    var frac = gastado / p.tope;
+
+    var fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'fila-cat fila-presup';
+    fila.title = frac > 1
+      ? 'Te pasaste por ' + fmtBase(gastado - p.tope) + ' — toca para ver los movimientos'
+      : 'Quedan ' + fmtBase(p.tope - gastado) + ' este mes — toca para ver los movimientos';
+    // El presupuesto es del mes en curso: el historial se filtra a ese mes
+    fila.onclick = function () { irACategoria(p.categoria, datos.hoy.substring(0, 7)); };
+
+    var info = document.createElement('div');
+    info.className = 'fila-cat-info';
+    var nombre = document.createElement('span');
+    nombre.textContent = (iconos[p.categoria] || '🏷️') + ' ' + p.categoria;
+    var monto = document.createElement('span');
+    monto.className = 'monto';
+    monto.textContent = fmtBase(gastado) + ' / ' + fmtBase(p.tope) + ' · ' + Math.round(frac * 100) + '%';
+    info.appendChild(nombre);
+    info.appendChild(monto);
+
+    var barra = document.createElement('div');
+    barra.className = 'barra';
+    var relleno = document.createElement('div');
+    // Verde tranquilo, ámbar cerca del tope (80%), rojo pasado
+    relleno.className = 'relleno ' + (frac > 1 ? 'pasado' : (frac >= 0.8 ? 'alerta' : 'ok'));
+    relleno.style.width = Math.min(frac, 1) * 100 + '%';
+    barra.appendChild(relleno);
+
+    fila.appendChild(info);
+    fila.appendChild(barra);
+    cont.appendChild(fila);
+  });
+}
+
+function abrirModalPresup() {
+  llenarSelect($('pre-cat'), datos.categorias.map(function (c) { return c.categoria; }), '— elige —');
+  $('pre-tope').value = '';
+  renderListaPresup();
+  $('modal-presup').hidden = false;
+}
+function cerrarModalPresup() { $('modal-presup').hidden = true; }
+
+/** Al elegir una categoría que ya tiene tope, precargarlo para editarlo. */
+function precargarTopePresup() {
+  var cat = $('pre-cat').value;
+  var p = (datos.presupuestos || []).filter(function (x) { return x.categoria === cat; })[0];
+  $('pre-tope').value = p ? montoATexto(p.tope) : '';
+}
+
+function renderListaPresup() {
+  var cont = $('pre-lista');
+  cont.innerHTML = '';
+  var lista = datos.presupuestos || [];
+  if (!lista.length) {
+    cont.innerHTML = '<p class="ayuda">Aún no hay presupuestos.</p>';
+    return;
+  }
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  lista.forEach(function (p) {
+    var fila = document.createElement('div');
+    fila.className = 'ajuste-fila';
+    var nom = document.createElement('span');
+    nom.textContent = (iconos[p.categoria] || '🏷️') + ' ' + p.categoria;
+    var val = document.createElement('b');
+    val.textContent = fmtBase(p.tope);
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-mini';
+    btn.innerHTML = icono('basura');
+    btn.title = 'Quitar este presupuesto';
+    btn.onclick = function () {
+      if (!confirm('¿Quitar el presupuesto de "' + p.categoria + '"?')) return;
+      llamar('guardarPresupuesto', [p.categoria, 0], function (ok) {
+        if (ok && !$('modal-presup').hidden) renderListaPresup();
+      });
+    };
+    fila.appendChild(nom);
+    fila.appendChild(val);
+    fila.appendChild(btn);
+    cont.appendChild(fila);
+  });
+}
+
+function guardarPresupuestoUI() {
+  var cat = $('pre-cat').value;
+  if (!cat) return toast('Elige la categoría', 'error');
+  var tope = parsearMonto($('pre-tope').value);
+  if (isNaN(tope)) tope = 0;
+  if (tope < 0) return toast('El tope no puede ser negativo', 'error');
+  var existia = (datos.presupuestos || []).some(function (p) { return p.categoria === cat; });
+  if (tope === 0 && !existia) return toast('Escribe el tope mensual', 'error');
+  if (tope === 0 && !confirm('¿Quitar el presupuesto de "' + cat + '"?')) return;
+  llamar('guardarPresupuesto', [cat, tope], function (ok) {
+    if (ok && !$('modal-presup').hidden) {
+      $('pre-cat').value = '';
+      $('pre-tope').value = '';
+      renderListaPresup();
+    }
+  });
+}
+
+// ============================================================ CUENTA NUEVA
+var ncTipoSel = 'Activo'; // tipo elegido en el modal de cuenta nueva
+
+/** Pinta una paleta de swatches en cualquier contenedor. */
+function renderPaletaEn(contId, seleccionado, alElegir) {
+  var cont = $(contId);
+  cont.innerHTML = '';
+  PALETA.forEach(function (color) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (color === seleccionado ? ' activa' : '');
+    b.style.background = color;
+    b.onclick = function () { alElegir(color); };
+    cont.appendChild(b);
+  });
+}
+function renderPaleta() {
+  renderPaletaEn('nc-paleta', colorSel, function (c) { colorSel = c; renderPaleta(); });
+}
+
+/** Chips de moneda (12) en un contenedor; al elegir llama a onPick(moneda). */
+function renderMonedasEn(contId, sel, onPick) {
+  var cont = $(contId);
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (m === sel ? ' activa' : '');
+    b.textContent = m + ' ' + simboloDe(m);
+    b.onclick = function () { onPick(m); };
+    cont.appendChild(b);
+  });
+}
+/** Chips de moneda del modal de cuenta nueva (se re-pinta al elegir). */
+function pintarMonedasNc() {
+  renderMonedasEn('nc-monedas', ncMonedaSel, function (m) {
+    ncMonedaSel = m; $('nc-simbolo').textContent = simboloDe(m); pintarMonedasNc();
+  });
+}
+/** Chips de moneda del editor de cuenta (dentro del modal de conciliar). */
+function pintarMonedasEc() {
+  renderMonedasEn('ec-monedas', ecMonedaSel, function (m) {
+    ecMonedaSel = m; $('si-simbolo').textContent = simboloDe(m); pintarMonedasEc();
+  });
+}
+
+function abrirModalCuenta(tipoInicial) {
+  ncTipoSel = tipoInicial === 'Deuda' ? 'Deuda' : 'Activo';
+  $('nc-nombre').value = '';
+  $('nc-saldo').value = '';
+  $('nc-nota').value = '';
+  colorSel = ncTipoSel === 'Deuda' ? '#C5221F' : PALETA[0];
+  ncMonedaSel = 'COP';
+  renderPaleta();
+  pintarMonedasNc();
+  $('nc-simbolo').textContent = simboloDe(ncMonedaSel);
+  pintarTipoCuentaNueva();
+  $('modal-cuenta').hidden = false;
+  $('nc-nombre').focus();
+}
+function cerrarModalCuenta() { $('modal-cuenta').hidden = true; }
+
+function pintarTipoCuentaNueva() {
+  document.querySelectorAll('#nc-tipos .chip').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.nctipo === ncTipoSel);
+  });
+  var esDeuda = ncTipoSel === 'Deuda';
+  $('nc-titulo').textContent = esDeuda ? 'Nueva deuda' : 'Nueva cuenta';
+  $('nc-lbl-saldo').textContent = esDeuda ? 'Cuánto debes hoy' : 'Saldo actual';
+  $('nc-ayuda').textContent = esDeuda
+    ? 'Una tarjeta de crédito, un préstamo... Escribe cuánto debes (en positivo) y la app la lleva como deuda: los pagos la van bajando hacia cero.'
+    : 'La cuenta arranca hoy con el saldo que escribas.';
+  $('nc-nombre').placeholder = esDeuda ? 'Ej: Tarjeta Rappi, Préstamo mamá' : 'Ej: Daviplata';
+}
+
+function guardarCuenta() {
+  var nombre = $('nc-nombre').value.trim();
+  var saldo = parsearMonto($('nc-saldo').value);
+  if (!nombre) return toast('Escribe el nombre', 'error');
+  if (isNaN(saldo)) return toast('Escribe el saldo (0 si está en ceros)', 'error');
+  cerrarModalCuenta();
+  llamar('agregarCuenta', [{
+    cuenta: nombre,
+    saldoInicial: saldo, // si es deuda, el servidor lo guarda en negativo
+    color: colorSel,
+    nota: $('nc-nota').value.trim(),
+    tipo: ncTipoSel,
+    moneda: ncMonedaSel
+  }]);
+}
+
+// ============================================================ CATEGORÍAS
+/** Grilla curada de emojis para el picker (categorías = único lugar de emojis). */
+var EMOJIS_CAT = ['🍔','🛒','☕','🍺','🍎','🥑','🎬','🎮','🎵','📚','🎓','💼','🏠','💡','💧','🔥',
+  '🚌','🚗','⛽','✈️','🏥','💊','💪','⚽','👕','👟','🎁','💇','🐶','🐱','🌱','🧴','📱','💻','🔌',
+  '💰','📈','🏦','💳','🎲','🧾','🍕','🛠️','🎨','🌐','☂️','🏷️','⚖️'];
+var catEditNombre = null;   // nombre de la categoría en edición (null = nueva)
+var catEditEmoji = '🏷️';   // emoji elegido en el picker
+
+function renderEmojiPicker() {
+  var cont = $('cat-emoji-grid');
+  cont.innerHTML = '';
+  EMOJIS_CAT.forEach(function (e) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e;
+    b.className = (e === catEditEmoji) ? 'activa' : '';
+    b.onclick = function () { catEditEmoji = e; renderEmojiPicker(); };
+    cont.appendChild(b);
+  });
+}
+
+/** Abre el editor de una categoría (o de una nueva si `c` es null). */
+function abrirCatEditor(c) {
+  catEditNombre = c ? c.categoria : null;
+  catEditEmoji = c ? (c.icono || '🏷️') : '🏷️';
+  $('cat-titulo').textContent = c ? 'Editar categoría' : 'Nueva categoría';
+  $('cat-nombre').value = c ? c.categoria : '';
+  $('cat-tipo').value = c ? (c.tipoSugerido || '') : '';
+  var ocultas = datos.catsOcultas || [];
+  $('cat-oculta').checked = c ? ocultas.indexOf(c.categoria) >= 0 : false;
+  $('cat-oculta-fila').hidden = !c; // ocultar solo aplica a las que ya existen
+  // Eliminar solo si existe y no tiene movimientos (el servidor revalida)
+  $('cat-eliminar').hidden = !(c && c.enUso === false);
+  renderEmojiPicker();
+  $('modal-cat').hidden = false;
+  $('cat-nombre').focus();
+}
+function cerrarCatEditor() { $('modal-cat').hidden = true; catEditNombre = null; }
+
+/** Aplica el estado oculto/visible de una categoría (guarda la lista completa). */
+function fijarCatOculta(nombre, oculta, alTerminar) {
+  var lista = (datos.catsOcultas || []).slice();
+  var i = lista.indexOf(nombre);
+  if (oculta && i < 0) lista.push(nombre);
+  else if (!oculta && i >= 0) lista.splice(i, 1);
+  else { if (alTerminar) alTerminar(true); return; } // sin cambio
+  llamar('guardarCatsOcultas', [lista], alTerminar);
+}
+
+function guardarCatEditor() {
+  var nombre = $('cat-nombre').value.trim();
+  if (!nombre) return toast('Escribe el nombre de la categoría', 'error');
+  var tipo = $('cat-tipo').value;
+  var oculta = $('cat-oculta').checked;
+
+  if (!catEditNombre) {
+    // Nueva: crear y, si se marcó oculta, ocultarla después
+    cerrarCatEditor();
+    llamar('agregarCategoria', [{ categoria: nombre, tipoSugerido: tipo, icono: catEditEmoji }],
+      function (ok) { if (ok && oculta) fijarCatOculta(nombre, true); });
+    return;
+  }
+
+  var c = datos.categorias.filter(function (x) { return x.categoria === catEditNombre; })[0];
+  var cambiaNombre = nombre !== catEditNombre;
+  if (cambiaNombre && c && c.enUso &&
+      !confirm('"' + catEditNombre + '" pasará a llamarse "' + nombre + '" también en todo el historial. ¿Continuar?')) {
+    return;
+  }
+  var viejoNombre = catEditNombre;
+  var yaOculta = (datos.catsOcultas || []).indexOf(viejoNombre) >= 0;
+  cerrarCatEditor();
+  llamar('editarCategoria', [viejoNombre, { categoria: nombre, icono: catEditEmoji, tipoSugerido: tipo }],
+    function (ok) {
+      // El estado oculto se guarda con el nombre NUEVO (editarCategoria propagó el rename)
+      if (ok && oculta !== yaOculta) fijarCatOculta(nombre, oculta);
+    });
+}
+
+function eliminarCatEditor() {
+  if (!catEditNombre) return;
+  if (!confirm('¿Eliminar la categoría "' + catEditNombre + '"?')) return;
+  var n = catEditNombre;
+  cerrarCatEditor();
+  llamar('eliminarCategoria', [n]);
+}
+
+// ============================================================ TEMA (claro/oscuro/auto)
+/* El modo guardado puede ser 'claro', 'oscuro' o 'auto' (sigue al sistema).
+   temaEfectivo resuelve 'auto' al tema real del momento. */
+function temaEfectivo(modo) {
+  if (modo === 'auto') return (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'oscuro' : 'claro';
+  return modo === 'oscuro' ? 'oscuro' : 'claro';
+}
+function aplicarTema(modo) {
+  var ef = temaEfectivo(modo);
+  document.documentElement.setAttribute('data-tema', ef);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = ef === 'oscuro' ? '#171B21' : '#1A73E8';
+  if (typeof Chart !== 'undefined') {
+    // Sin esto, los textos de Chart.js quedan ilegibles al cambiar de tema
+    Chart.defaults.color = ef === 'oscuro' ? '#BDC1C6' : '#5F6368';
+    Chart.defaults.borderColor = ef === 'oscuro' ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.08)';
+  }
+  // Marcar el chip activo en Ajustes → Apariencia
+  document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.tema === modo);
+  });
+  if (datos) {
+    renderGraficas();
+    renderEvolucion();
+    if (cuentaDetalle) renderCuentaDetalle();
+  }
+}
+function elegirTema(modo) {
+  localStorage.setItem('tema', modo);
+  aplicarTema(modo);
+}
+
+// ============================================================ AJUSTES
+var VERSION = '9.0';
+var CHANGELOG = 'Lavado de cara: iconos nuevos, botón (+) para registrar desde cualquier vista, ' +
+  'sección Ajustes con moneda base configurable y transferencias con selector visual.';
+
+var MONEDAS_UI = ['COP', 'USD', 'EUR', 'GBP', 'BRL', 'MXN', 'ARS', 'CLP', 'PEN', 'CAD', 'CHF', 'JPY'];
+
+/** Pinta la vista de Ajustes completa. */
+function renderAjustes() {
+  if (!datos) return;
+  renderAjustesMoneda();
+  renderAjustesTasas();
+  renderAjustesCuentas();
+  renderAjustesCats();
+  if (datos.hojaUrl) $('aj-hoja').href = datos.hojaUrl;
+  $('aj-version').textContent = 'Versión ' + VERSION;
+  $('aj-changelog').textContent = CHANGELOG;
+}
+
+/** Selector de moneda base: un chip por moneda (código + símbolo). */
+function renderAjustesMoneda() {
+  var cont = $('aj-base-monedas');
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (m === monedaBase ? ' activa' : '');
+    b.textContent = m + ' ' + simboloDe(m);
+    b.onclick = function () {
+      if (m === monedaBase) return;
+      llamar('guardarMonedaBase', [m]);
+    };
+    cont.appendChild(b);
+  });
+}
+
+/** Tabla de tasas: valor en uso, badge (auto/manual/sin tasa) y editar la manual. */
+function renderAjustesTasas() {
+  var cont = $('aj-tasas-lista');
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    if (m === 'COP') return; // COP es el pivote, no tiene tasa a sí mismo
+    var t = (datos.tasas || {})[m] || {};
+    var fila = document.createElement('div');
+    fila.className = 'tasa-fila';
+
+    var par = document.createElement('span');
+    par.className = 'tf-par'; par.textContent = m;
+
+    var val = document.createElement('span');
+    val.className = 'tf-val';
+    val.textContent = (t.tasa > 0) ? ('1 ' + m + ' = ' + fmtNativo(t.tasa, 'COP')) : 'sin tasa';
+
+    var badge = document.createElement('span');
+    if (t.sinTasa || !(t.tasa > 0)) { badge.className = 'tf-badge sintasa'; badge.textContent = 'sin tasa'; }
+    else if (t.esManual) { badge.className = 'tf-badge manual'; badge.textContent = 'manual'; }
+    else { badge.className = 'tf-badge'; badge.textContent = 'auto'; }
+
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn-mini'; btn.innerHTML = icono('lapiz');
+    btn.title = 'Editar la tasa manual de respaldo';
+    btn.onclick = function () {
+      var actual = t.tasa > 0 ? montoATexto(t.tasa) : '';
+      var v = prompt('Tasa manual de 1 ' + m + ' en COP (respaldo si la automática falla):', actual);
+      if (v === null) return;
+      var n = parsearMonto(v);
+      if (!(n > 0)) return toast('Escribe un número mayor que cero', 'error');
+      llamar('guardarTasaManual', [m, n]);
+    };
+
+    fila.appendChild(par); fila.appendChild(val); fila.appendChild(badge); fila.appendChild(btn);
+    cont.appendChild(fila);
+  });
+  $('aj-tasas-nota').textContent = 'Tasas a COP · actualizadas al abrir la app. ' +
+    'La automática viene de Google Finance; la manual es el respaldo editable.';
+}
+
+/** Lista de cuentas: tocar abre el editor (modal de conciliar, con edición abierta). */
+function renderAjustesCuentas() {
+  var cont = $('aj-cuentas-lista');
+  cont.innerHTML = '';
+  datos.cuentas.forEach(function (c) {
+    var it = document.createElement('button');
+    it.type = 'button'; it.className = 'aj-item';
+    var punto = document.createElement('span');
+    punto.className = 'punto'; punto.style.background = c.color;
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b'); nom.textContent = c.cuenta;
+    var sal = document.createElement('span');
+    sal.className = 'ai-saldo';
+    sal.textContent = fmtNativo(c.saldo, c.moneda) + (c.tipo === 'Deuda' ? ' · deuda' : '') +
+      (c.moneda !== 'COP' ? ' · ' + c.moneda : '');
+    txt.appendChild(nom); txt.appendChild(sal);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(punto); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () { abrirAjuste(c); $('si-bloque').hidden = false; };
+    cont.appendChild(it);
+  });
+}
+
+/** Lista de categorías: tocar abre el editor (renombrar, emoji, ocultar, eliminar). */
+function renderAjustesCats() {
+  var cont = $('aj-cats-lista');
+  cont.innerHTML = '';
+  var ocultas = datos.catsOcultas || [];
+  datos.categorias.forEach(function (c) {
+    var esOculta = ocultas.indexOf(c.categoria) >= 0;
+    var it = document.createElement('button');
+    it.type = 'button'; it.className = 'aj-item' + (esOculta ? ' oculta' : '');
+    var em = document.createElement('span');
+    em.className = 'ai-emoji'; em.textContent = c.icono || '🏷️';
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b'); nom.textContent = c.categoria;
+    var sub = document.createElement('span');
+    sub.className = 'ai-saldo';
+    sub.textContent = (c.tipoSugerido ? c.tipoSugerido : 'sin tipo') + (esOculta ? ' · oculta' : '');
+    txt.appendChild(nom); txt.appendChild(sub);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () { abrirCatEditor(c); };
+    cont.appendChild(it);
+  });
+}
+
+// ============================================================ NAVEGACIÓN
+/* Vistas de nav (barra/sidebar): resumen, meses, historial, ajustes. Registrar
+   y cuenta son SUBVISTAS: se abren por hash (#registrar, #cuenta/Nombre), y el
+   botón atrás del navegador las cierra volviendo a `vistaBase`. */
+var TITULOS = { registrar: 'Registrar', resumen: 'Panel', meses: 'Evolución', historial: 'Historial', ajustes: 'Ajustes', cuenta: 'Cuenta' };
+var vistaActual = 'resumen';
+var vistaBase = 'resumen'; // última vista de nav; a ella vuelve el back de una subvista
+
+function irA(vista) {
+  var esSubvista = (vista === 'cuenta' || vista === 'registrar');
+  // Ir a una vista de nav: recordarla como base y soltar la subvista (limpia el hash)
+  if (!esSubvista) {
+    vistaBase = vista;
+    cuentaDetalle = null;
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+  }
+  vistaActual = vista;
+  document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
+  $('vista-' + vista).classList.add('activa');
+  // La subvista de cuenta cuelga del Panel; Registrar no marca ninguna pestaña
+  var navVista = vista === 'cuenta' ? 'resumen' : vista;
+  document.querySelectorAll('.nav-btn').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.vista === navVista);
+  });
+  // En Registrar el FAB se esconde en móvil (el CTA es Guardar)
+  document.body.classList.toggle('en-registrar', vista === 'registrar');
+  $('titulo-vista').textContent = TITULOS[vista];
+  window.scrollTo(0, 0);
+  // Los canvas ocultos se dibujan mal: redibujar al mostrar su vista
+  if (vista === 'resumen') renderGraficas();
+  if (vista === 'meses') renderEvolucion();
+  if (vista === 'cuenta') renderCuentaDetalle();
+  if (vista === 'ajustes') renderAjustes();
+}
+
+/** Abre Registrar (subvista por hash). Opcionalmente preselecciona el origen. */
+function abrirRegistrar(cuentaOrigen) {
+  if (cuentaOrigen) { cuentaSel = cuentaOrigen; destinoSel = ''; }
+  renderChipsRegistrar(); // reflejar la preselección antes de mostrar la vista
+  location.hash = '#registrar';
+}
+/** Cierra Registrar. Intenta volver por el historial (deja el botón atrás del
+    navegador consistente), pero si el back no cierra la vista —pasa a ratos
+    dentro del iframe de Apps Script— fuerza la vuelta a la base como respaldo. */
+function cerrarRegistrar() {
+  if (location.hash === '#registrar') {
+    history.back();
+    setTimeout(function () { if (vistaActual === 'registrar') irA(vistaBase); }, 120);
+  } else {
+    irA(vistaBase);
+  }
+}
+
+// ============================================================ ARRANQUE
+document.addEventListener('DOMContentLoaded', function () {
+  // Tema: lo guardado, o 'auto' (sigue al sistema)
+  aplicarTema(localStorage.getItem('tema') || 'auto');
+  // En modo 'auto', re-aplicar cuando el sistema cambie de claro/oscuro
+  if (window.matchMedia) {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      if ((localStorage.getItem('tema') || 'auto') === 'auto') aplicarTema('auto');
+    });
+  }
+  document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
+    b.onclick = function () { elegirTema(b.dataset.tema); };
+  });
+
+  // Fecha de hoy por defecto (zona local del teléfono)
+  $('inp-fecha').value = Utilities_fmt(new Date());
+
+  document.querySelectorAll('.btn-tipo').forEach(function (b) {
+    b.onclick = function () { elegirTipo(b.dataset.tipo); };
+  });
+  elegirTipo('Gasto');
+
+  $('btn-guardar').onclick = guardar;
+  $('btn-refrescar').onclick = function () { cargarDatos(false); };
+  document.querySelectorAll('.nav-btn').forEach(function (b) {
+    b.onclick = function () { irA(b.dataset.vista); };
+  });
+  // Registrar: FAB (móvil) / botón del sidebar (PC), y su botón "Volver"
+  $('btn-registrar').onclick = function () { abrirRegistrar(); };
+  $('reg-volver').onclick = cerrarRegistrar;
+
+  // Selector visual de transferencia (Origen → Destino con ⇄)
+  $('tr-origen').onclick = function () { transferLado = 'origen'; renderChipsRegistrar(); };
+  $('tr-destino').onclick = function () { transferLado = 'destino'; renderChipsRegistrar(); };
+  $('tr-swap').onclick = function () {
+    var t = cuentaSel; cuentaSel = destinoSel; destinoSel = t;
+    renderChipsRegistrar();
+  };
+
+  // Presupuestos del Panel: desplegar/plegar el resto
+  $('presup-vertodos').onclick = function () {
+    presupExpandido = !presupExpandido;
+    renderPresupuestos();
+  };
+
+  ['fil-mes', 'fil-cuenta', 'fil-tipo', 'fil-categoria'].forEach(function (id) {
+    $(id).onchange = renderHistorial;
+  });
+
+  // Separadores de miles mientras se escribe (el ajuste admite negativos)
+  $('inp-monto').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('ed-valor').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('inp-valor-destino').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('ed-valor-destino').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('aj-real').addEventListener('input', function () {
+    formatearMontoEnVivo(this, true);
+    actualizarDifAjuste();
+  });
+
+  $('ed-tipo').onchange = ajustarModalTipo;
+  // Cambiar cuenta u origen puede cambiar de moneda: revisar el campo "llega"
+  $('ed-cuenta').onchange = ajustarModalTipo;
+  $('ed-destino').onchange = ajustarModalTipo;
+  $('ed-guardar').onclick = guardarEdicion;
+  $('ed-borrar').onclick = borrarEdicion;
+  $('ed-cancelar').onclick = cerrarModal;
+  $('modal-fondo').onclick = function (e) { if (e.target === this) cerrarModal(); };
+
+  $('aj-guardar').onclick = guardarAjuste;
+  $('aj-cancelar').onclick = cerrarAjuste;
+  $('modal-ajuste').onclick = function (e) { if (e.target === this) cerrarAjuste(); };
+
+  // Saldo inicial (dentro del modal de cuadre)
+  $('si-toggle').onclick = function () { $('si-bloque').hidden = !$('si-bloque').hidden; };
+  $('si-valor').addEventListener('input', function () { formatearMontoEnVivo(this, true); });
+  $('si-guardar').onclick = guardarSaldoInicial;
+  $('si-eliminar').onclick = eliminarCuentaActual;
+
+  // Modal de mes (detalle + ajuste de inicio)
+  $('mes-cerrar').onclick = cerrarMes;
+  $('modal-mes').onclick = function (e) { if (e.target === this) cerrarMes(); };
+  $('mes-ajuste-valor').addEventListener('input', function () {
+    formatearMontoEnVivo(this, true);
+    actualizarDifMes();
+  });
+  $('mes-ajuste-guardar').onclick = guardarAjusteMes;
+
+  // Modal de cuenta nueva
+  $('nc-cancelar').onclick = cerrarModalCuenta;
+  $('modal-cuenta').onclick = function (e) { if (e.target === this) cerrarModalCuenta(); };
+  $('nc-saldo').addEventListener('input', function () { formatearMontoEnVivo(this, true); });
+  $('nc-guardar').onclick = guardarCuenta;
+
+  // Editor de una categoría (modal-cat): nuevo, guardar, eliminar, cerrar
+  $('cat-guardar').onclick = guardarCatEditor;
+  $('cat-eliminar').onclick = eliminarCatEditor;
+  $('cat-cancelar').onclick = cerrarCatEditor;
+  $('modal-cat').onclick = function (e) { if (e.target === this) cerrarCatEditor(); };
+
+  // Ajustes: cuentas y categorías (agregar / ordenar)
+  $('aj-add-cuenta').onclick = function () { abrirModalCuenta('Activo'); };
+  $('aj-add-deuda').onclick = function () { abrirModalCuenta('Deuda'); };
+  $('aj-add-cat').onclick = function () { abrirCatEditor(null); };
+  $('aj-ordenar').onclick = function () { irA('resumen'); if (!ordenando) alternarOrden(); };
+
+  // Panel: modo ordenar y tipo de cuenta nueva
+  $('btn-ordenar').onclick = alternarOrden;
+  document.querySelectorAll('#nc-tipos .chip').forEach(function (b) {
+    b.onclick = function () { ncTipoSel = b.dataset.nctipo; pintarTipoCuentaNueva(); };
+  });
+
+  // Vista de detalle de cuenta
+  window.addEventListener('hashchange', manejarHash);
+  $('cd-volver').onclick = function () { history.back(); };
+  $('cd-registrar').onclick = function () {
+    abrirRegistrar(cuentaDetalle); // preselecciona esta cuenta como origen
+  };
+  $('cd-conciliar').onclick = function () {
+    var c = cuentaPorNombre(cuentaDetalle);
+    if (c) abrirAjuste(c);
+  };
+  $('cd-editar').onclick = function () {
+    var c = cuentaPorNombre(cuentaDetalle);
+    if (c) { abrirAjuste(c); $('si-bloque').hidden = false; }
+  };
+  $('cd-ver-todo').onclick = function () {
+    var n = cuentaDetalle;
+    $('fil-mes').value = '';
+    $('fil-tipo').value = '';
+    $('fil-categoria').value = '';
+    $('fil-buscar').value = '';
+    $('fil-cuenta').value = n;
+    renderHistorial();
+    irA('historial');
+  };
+  document.querySelectorAll('#cd-rangos .chip').forEach(function (b) {
+    b.onclick = function () {
+      rangoCuenta = Number(b.dataset.cdrango);
+      localStorage.setItem('rangoCuenta', rangoCuenta);
+      renderCuentaDetalle();
+    };
+  });
+
+  // Rango de las gráficas
+  document.querySelectorAll('#rango-graficas .chip').forEach(function (b) {
+    b.onclick = function () {
+      rangoSel = Number(b.dataset.rango);
+      localStorage.setItem('rangoGraficas', rangoSel);
+      renderGraficas();
+    };
+  });
+
+  // Rango de la línea grande de Evolución
+  document.querySelectorAll('#rango-evol .chip').forEach(function (b) {
+    b.onclick = function () {
+      rangoEvol = Number(b.dataset.evrango);
+      localStorage.setItem('rangoEvol', rangoEvol);
+      renderEvolucion();
+    };
+  });
+
+  // Vistas de las gráficas del Panel (dona/lista, I vs G/neto, mes/día)
+  document.querySelectorAll('[data-vbarras]').forEach(function (b) {
+    b.onclick = function () {
+      vistaBarras = b.dataset.vbarras;
+      localStorage.setItem('vistaBarras', vistaBarras);
+      renderGraficas();
+    };
+  });
+  $('chip-gran').onclick = function () {
+    granBarras = granBarras === 'dia' ? 'mes' : 'dia';
+    localStorage.setItem('granBarras', granBarras);
+    renderGraficas();
+  };
+  document.querySelectorAll('[data-vcats]').forEach(function (b) {
+    b.onclick = function () {
+      vistaCats = b.dataset.vcats;
+      localStorage.setItem('vistaCats', vistaCats);
+      renderGraficas();
+    };
+  });
+
+  // Buscador del historial (con 300 movimientos máximo no hace falta debounce)
+  $('fil-buscar').addEventListener('input', renderHistorial);
+
+  // Modal de presupuestos
+  $('btn-presup').onclick = abrirModalPresup;
+  $('pre-cerrar').onclick = cerrarModalPresup;
+  $('modal-presup').onclick = function (e) { if (e.target === this) cerrarModalPresup(); };
+  $('pre-cat').onchange = precargarTopePresup;
+  $('pre-tope').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('pre-guardar').onclick = guardarPresupuestoUI;
+
+  // Escape cierra el modal que esté abierto (en PC ahorra buscar el botón)
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!$('modal-fondo').hidden) cerrarModal();
+    else if (!$('modal-ajuste').hidden) cerrarAjuste();
+    else if (!$('modal-mes').hidden) cerrarMes();
+    else if (!$('modal-cuenta').hidden) cerrarModalCuenta();
+    else if (!$('modal-cat').hidden) cerrarCatEditor();
+    else if (!$('modal-presup').hidden) cerrarModalPresup();
+  });
+
+  // Recarga automática al volver a la app (cambio de pestaña / desbloquear el celular)
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible' && datos) cargarDatos(true);
+  });
+
+  // Primera carga: esqueletos en el Panel (sin velo) mientras llega getDatos
+  pintarEsqueletos();
+  cargarDatos(true);
+});
+</script>

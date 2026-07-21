@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="theme-color" content="#1A73E8">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>%F0%9F%92%B0</text></svg>">
+  <title>Mis Finanzas</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <?!= include('styles'); ?>
+</head>
+<body>
+
+  <!-- Sprite de iconos SVG (trazo 2px, 24x24, color = currentColor vía CSS .ic).
+       Un solo lugar para todos los iconos de UI; los emojis quedan SOLO como
+       icono de categoría. Se usan con <svg class="ic"><use href="#i-nombre"/></svg>. -->
+  <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
+    <symbol id="i-evolucion" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
+    <symbol id="i-historial" viewBox="0 0 24 24"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-ajustes" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-mas" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-refrescar" viewBox="0 0 24 24"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></symbol>
+    <symbol id="i-luna" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-sol" viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></symbol>
+    <symbol id="i-lapiz" viewBox="0 0 24 24"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></symbol>
+    <symbol id="i-balanza" viewBox="0 0 24 24"><path d="M12 3v18"/><path d="M8 21h8"/><path d="M4 6h16"/><path d="M6 6l-3 6.5a3.2 3.2 0 0 0 6 0L6 6z"/><path d="M18 6l-3 6.5a3.2 3.2 0 0 0 6 0L18 6z"/></symbol>
+    <symbol id="i-orden" viewBox="0 0 24 24"><polyline points="8 7 4 3 0 7" transform="translate(3 1)"/><line x1="7" y1="4" x2="7" y2="20"/><polyline points="21 17 17 21 13 17"/><line x1="17" y1="20" x2="17" y2="4"/></symbol>
+    <symbol id="i-basura" viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-buscar" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-flecha-izq" viewBox="0 0 24 24"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></symbol>
+    <symbol id="i-flecha-der" viewBox="0 0 24 24"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></symbol>
+    <symbol id="i-invertir" viewBox="0 0 24 24"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></symbol>
+    <symbol id="i-enlace" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></symbol>
+    <symbol id="i-calendario" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></symbol>
+    <symbol id="i-chevron-der" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-tarjeta-cred" viewBox="0 0 24 24"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></symbol>
+    <symbol id="i-menos-circ" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></symbol>
+    <symbol id="i-mas-circ" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></symbol>
+    <symbol id="i-transfer" viewBox="0 0 24 24"><polyline points="17 4 21 8 17 12"/><line x1="21" y1="8" x2="7" y2="8"/><polyline points="7 12 3 16 7 20"/><line x1="3" y1="16" x2="17" y2="16"/></symbol>
+    <symbol id="i-dona" viewBox="0 0 24 24"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></symbol>
+    <symbol id="i-lista" viewBox="0 0 24 24"><line x1="12" y1="6" x2="21" y2="6"/><line x1="12" y1="12" x2="21" y2="12"/><line x1="12" y1="18" x2="21" y2="18"/><rect x="3" y="4" width="5" height="4" rx="1"/><rect x="3" y="10" width="5" height="4" rx="1"/><rect x="3" y="16" width="5" height="4" rx="1"/></symbol>
+    <symbol id="i-vacio" viewBox="0 0 24 24"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+    <symbol id="i-grafica" viewBox="0 0 24 24"><line x1="12" y1="20" x2="12" y2="10"/><line x1="18" y1="20" x2="18" y2="4"/><line x1="6" y1="20" x2="6" y2="16"/></symbol>
+  </svg>
+
+  <div class="contenedor">
+
+    <!-- Encabezado -->
+    <header>
+      <h1 id="titulo-vista">Panel</h1>
+      <div class="header-botones">
+        <button id="btn-refrescar" class="btn-icono" title="Refrescar datos"><svg class="ic"><use href="#i-refrescar"/></svg></button>
+      </div>
+    </header>
+
+    <!-- ================= VISTA: REGISTRAR =================
+         Las dos .col son columnas solo en PC. En móvil se disuelven
+         (display:contents) y el orden lo fija `order` en styles.html,
+         para que la pantalla del celular quede exactamente igual. -->
+    <section id="vista-registrar" class="vista">
+
+      <button id="reg-volver" class="btn-mini" type="button"><svg class="ic"><use href="#i-flecha-izq"/></svg>Volver</button>
+
+      <div class="col">
+        <div class="grupo-tipos" id="grupo-tipos">
+          <button class="btn-tipo" data-tipo="Gasto"><svg class="ic"><use href="#i-menos-circ"/></svg><span>Gasto</span></button>
+          <button class="btn-tipo" data-tipo="Ingreso"><svg class="ic"><use href="#i-mas-circ"/></svg><span>Ingreso</span></button>
+          <button class="btn-tipo" data-tipo="Transferencia"><svg class="ic"><use href="#i-transfer"/></svg><span>Transfer.</span></button>
+          <button class="btn-tipo" data-tipo="Pago tarjeta"><svg class="ic"><use href="#i-tarjeta-cred"/></svg><span>Pagar deuda</span></button>
+        </div>
+
+        <div class="tarjeta" id="bloque-monto">
+          <label class="etiqueta">Monto</label>
+          <div class="campo-monto">
+            <span>$</span>
+            <input id="inp-monto" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+          </div>
+        </div>
+
+        <div class="tarjeta fila-doble" id="bloque-fecha">
+          <div>
+            <label class="etiqueta" for="inp-fecha">Fecha</label>
+            <input id="inp-fecha" type="date">
+          </div>
+          <div>
+            <label class="etiqueta" for="inp-desc">Descripción (opcional)</label>
+            <input id="inp-desc" type="text" placeholder="¿En qué fue?" autocomplete="off">
+          </div>
+        </div>
+
+        <button id="btn-guardar" class="btn-principal">Guardar gasto</button>
+      </div>
+
+      <div class="col">
+        <!-- Gasto/Ingreso: una sola cuenta -->
+        <div class="tarjeta" id="bloque-cuenta">
+          <label class="etiqueta" id="lbl-cuenta">Cuenta</label>
+          <div class="chips" id="chips-cuenta"></div>
+        </div>
+
+        <!-- Transferencia/Pagar deuda: selector visual Origen → Destino -->
+        <div class="tarjeta" id="bloque-transfer" hidden>
+          <div class="transfer-sel">
+            <button type="button" class="transfer-card" id="tr-origen">
+              <span class="tc-rol" id="tr-origen-rol">Desde</span>
+              <span class="tc-cuenta"><span class="punto" id="tr-origen-punto"></span><span id="tr-origen-nombre">Elige</span></span>
+            </button>
+            <button type="button" class="transfer-swap" id="tr-swap" title="Invertir origen y destino"><svg class="ic"><use href="#i-invertir"/></svg></button>
+            <button type="button" class="transfer-card" id="tr-destino">
+              <span class="tc-rol" id="tr-destino-rol">Hacia</span>
+              <span class="tc-cuenta"><span class="punto" id="tr-destino-punto"></span><span id="tr-destino-nombre">Elige</span></span>
+            </button>
+          </div>
+          <label class="etiqueta" id="tr-chips-lbl" style="margin-top:14px">Elige el origen</label>
+          <div class="chips" id="chips-transfer"></div>
+          <p class="ayuda" id="destino-vacio" hidden>No tienes deudas registradas: agrégalas en el Panel con "Agregar deuda".</p>
+          <p class="ayuda" id="tr-tasa" hidden></p>
+        </div>
+
+        <!-- Solo transferencias entre monedas distintas: cuánto ENTRA al destino -->
+        <div class="tarjeta" id="bloque-valor-destino" hidden>
+          <label class="etiqueta" id="lbl-valor-destino">Llega al destino</label>
+          <div class="campo-monto compacto">
+            <span id="vd-simbolo">$</span>
+            <input id="inp-valor-destino" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+          </div>
+          <p class="ayuda">Las cuentas usan monedas distintas: arriba va lo que sale y aquí lo que llega (como te lo muestre el banco).</p>
+        </div>
+
+        <div class="tarjeta" id="bloque-categoria">
+          <label class="etiqueta">Categoría</label>
+          <div class="chips" id="chips-categoria"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VISTA: PANEL ================= -->
+    <section id="vista-resumen" class="vista activa">
+      <div class="tarjeta patrimonio">
+        <div class="etiqueta">Patrimonio neto</div>
+        <div class="valor-grande" id="txt-patrimonio">—</div>
+        <div class="patrimonio-desglose" id="txt-desglose"></div>
+        <div class="patrimonio-desglose" id="txt-tasas" hidden></div>
+      </div>
+
+      <div class="titulo-seccion">
+        <span class="etiqueta">Cuentas</span>
+        <button id="btn-ordenar" class="btn-mini" type="button" title="Cambiar el orden de las tarjetas"><svg class="ic"><use href="#i-orden"/></svg>Ordenar</button>
+      </div>
+      <div id="lista-cuentas" class="grid-cuentas"></div>
+
+      <!-- Sección Deudas: se oculta entera si no hay deudas (renderResumen) -->
+      <div id="seccion-deudas">
+        <div class="titulo-seccion">
+          <span class="etiqueta">Deudas</span>
+        </div>
+        <div id="lista-deudas" class="grid-cuentas"></div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="etiqueta" id="titulo-mes">Este mes</div>
+        <div class="resumen-mes">
+          <div><span class="mini">Empezó con</span><b id="txt-inicio-mes">—</b></div>
+          <div title="No incluye transferencias: mover plata entre tus cuentas no es un ingreso"><span class="mini">Ingresos</span><b id="txt-ingresos" class="verde">—</b><span id="chip-ingresos-delta" class="chip-delta" hidden></span></div>
+          <div title="No incluye transferencias ni pagos de deuda: mover plata entre tus cuentas no es un gasto"><span class="mini">Gastos</span><b id="txt-gastos" class="rojo">—</b><span id="chip-gastos-delta" class="chip-delta" hidden></span></div>
+          <div><span class="mini">Neto</span><b id="txt-neto">—</b></div>
+        </div>
+        <div class="proyeccion" id="txt-proyeccion" hidden></div>
+      </div>
+
+      <!-- Presupuestos: tope de gasto mensual por categoría -->
+      <div class="tarjeta">
+        <div class="etiqueta-fila">
+          <label class="etiqueta">Presupuestos del mes</label>
+          <button id="btn-presup" class="btn-mini" type="button" title="Definir topes de gasto por categoría"><svg class="ic"><use href="#i-lapiz"/></svg>Editar</button>
+        </div>
+        <div id="lista-presup" class="lista-cats"></div>
+        <button id="presup-vertodos" class="enlace" type="button" hidden></button>
+        <p class="ayuda" id="presup-vacio" hidden>Con "Editar" le pones tope mensual a tus categorías de gasto.</p>
+      </div>
+
+      <!-- Bloque de gráficas: el selector de rango manda sobre las 3 de abajo -->
+      <div class="titulo-seccion"><span class="etiqueta">Gráficas</span></div>
+
+      <!-- Rango de las gráficas -->
+      <div class="rango-graficas" id="rango-graficas">
+        <button class="chip" data-rango="1" type="button">Este mes</button>
+        <button class="chip" data-rango="3" type="button">3M</button>
+        <button class="chip" data-rango="6" type="button">6M</button>
+        <button class="chip" data-rango="12" type="button">12M</button>
+      </div>
+
+      <!-- Si el CDN de Chart.js no carga, esto reemplaza a las gráficas -->
+      <div id="graficas-error" class="tarjeta mensaje-vacio" hidden>
+        <svg class="ic"><use href="#i-grafica"/></svg>
+        No se pudo cargar la librería de gráficas.<br>Revisa la conexión y toca refrescar para reintentar.
+      </div>
+
+      <!-- Gráfica principal: cómo va cambiando el patrimonio -->
+      <div class="tarjeta" id="tarjeta-patrimonio-linea">
+        <div class="etiqueta" id="titulo-patrimonio-linea">Patrimonio en el tiempo</div>
+        <div class="lienzo"><canvas id="chart-patrimonio"></canvas></div>
+      </div>
+
+      <!-- .graficas: lado a lado en PC, apiladas en móvil -->
+      <div class="graficas">
+        <div class="tarjeta">
+          <div class="etiqueta" id="titulo-dona">Gastos por categoría</div>
+          <div class="chips-grafica">
+            <button class="chip" type="button" data-vcats="dona" title="Gráfica de dona"><svg class="ic ic-mini"><use href="#i-dona"/></svg>Dona</button>
+            <button class="chip" type="button" data-vcats="lista" title="Lista con barras y porcentajes"><svg class="ic ic-mini"><use href="#i-lista"/></svg>Lista</button>
+          </div>
+          <div class="lienzo"><canvas id="chart-dona"></canvas></div>
+          <div id="lista-cats" class="lista-cats" hidden></div>
+          <div id="dona-vacia" class="mensaje-vacio" hidden><svg class="ic"><use href="#i-dona"/></svg>Sin gastos en este rango</div>
+        </div>
+
+        <div class="tarjeta">
+          <div class="etiqueta" id="titulo-barras">Ingresos vs gastos</div>
+          <div class="chips-grafica">
+            <button class="chip" type="button" data-vbarras="ivg" title="Ingresos y gastos lado a lado">I vs G</button>
+            <button class="chip" type="button" data-vbarras="neto" title="Lo que quedó cada período (ingresos − gastos)">Neto</button>
+            <button class="chip" type="button" id="chip-gran" title="Alternar entre ver por mes o día a día"><svg class="ic ic-mini"><use href="#i-calendario"/></svg><span id="chip-gran-txt">Por mes</span></button>
+          </div>
+          <div class="lienzo"><canvas id="chart-barras"></canvas></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================= VISTA: DETALLE DE UNA CUENTA =================
+         No está en la barra de navegación: se llega tocando una tarjeta del
+         Panel (hash #cuenta/Nombre, el botón atrás del navegador la cierra). -->
+    <section id="vista-cuenta" class="vista">
+      <button id="cd-volver" class="btn-mini" type="button"><svg class="ic"><use href="#i-flecha-izq"/></svg>Volver al Panel</button>
+
+      <div class="tarjeta cuenta-hero" id="cd-hero">
+        <div class="etiqueta" id="cd-tipo">Cuenta</div>
+        <div class="valor-grande" id="cd-saldo">—</div>
+        <div class="equiv" id="cd-equiv" hidden></div>
+        <div class="mini" id="cd-nota"></div>
+      </div>
+
+      <div class="acciones-cuenta">
+        <button id="cd-registrar" class="btn-mini" type="button" title="Registrar un movimiento con esta cuenta ya elegida"><svg class="ic"><use href="#i-mas"/></svg>Registrar aquí</button>
+        <button id="cd-conciliar" class="btn-mini" type="button" title="Cuadrar con el saldo real del banco"><svg class="ic"><use href="#i-balanza"/></svg>Conciliar saldo</button>
+        <button id="cd-editar" class="btn-mini" type="button" title="Nombre, color, nota, moneda y saldo inicial"><svg class="ic"><use href="#i-lapiz"/></svg>Editar cuenta</button>
+      </div>
+
+      <div class="rango-graficas" id="cd-rangos">
+        <button class="chip" data-cdrango="1" type="button">1M</button>
+        <button class="chip" data-cdrango="3" type="button">3M</button>
+        <button class="chip" data-cdrango="6" type="button">6M</button>
+        <button class="chip" data-cdrango="12" type="button">12M</button>
+      </div>
+
+      <div class="tarjeta">
+        <div class="etiqueta" id="cd-titulo-graf">Saldo día a día</div>
+        <div class="lienzo"><canvas id="chart-cuenta"></canvas></div>
+        <div id="cd-graf-vacia" class="mensaje-vacio" hidden><svg class="ic"><use href="#i-evolucion"/></svg>Aún no hay historia suficiente</div>
+      </div>
+
+      <div class="tarjeta">
+        <div class="etiqueta" id="cd-titulo-mes">Este mes en esta cuenta</div>
+        <div class="resumen-mes dos">
+          <div title="No incluye transferencias: mover plata entre tus cuentas no es un ingreso"><span class="mini">Ingresos</span><b id="cd-ingresos" class="verde">—</b></div>
+          <div title="No incluye transferencias ni pagos de deuda: mover plata entre tus cuentas no es un gasto"><span class="mini">Gastos</span><b id="cd-gastos" class="rojo">—</b></div>
+        </div>
+      </div>
+
+      <div class="titulo-seccion">
+        <span class="etiqueta">Últimos movimientos</span>
+        <button id="cd-ver-todo" class="btn-mini" type="button" title="Verlos en el Historial con el filtro puesto">Ver todos</button>
+      </div>
+      <div id="cd-movs"></div>
+    </section>
+
+    <!-- ================= VISTA: EVOLUCIÓN ================= -->
+    <section id="vista-meses" class="vista">
+
+      <!-- (1) Línea de patrimonio, grande, con sus propios rangos -->
+      <div class="rango-graficas" id="rango-evol">
+        <button class="chip" data-evrango="1" type="button">Este mes</button>
+        <button class="chip" data-evrango="3" type="button">3M</button>
+        <button class="chip" data-evrango="6" type="button">6M</button>
+        <button class="chip" data-evrango="12" type="button">12M</button>
+      </div>
+      <div class="tarjeta">
+        <div class="etiqueta" id="titulo-evolucion">Patrimonio en el tiempo</div>
+        <div class="lienzo alto"><canvas id="chart-evolucion"></canvas></div>
+        <div id="evolucion-vacia" class="mensaje-vacio" hidden><svg class="ic"><use href="#i-evolucion"/></svg>Aún no hay historia suficiente</div>
+      </div>
+
+      <!-- (3) Tarjetas de insight -->
+      <div class="insights" id="insights"></div>
+
+      <!-- (2) Tabla mes a mes -->
+      <div class="tarjeta">
+        <div class="etiqueta">Mes a mes</div>
+        <div class="tabla-scroll"><table class="tabla-meses" id="tabla-meses"></table></div>
+      </div>
+
+      <div class="graficas">
+        <!-- (4) Composición del patrimonio por cuenta -->
+        <div class="tarjeta">
+          <div class="etiqueta">Composición del patrimonio</div>
+          <div class="lienzo"><canvas id="chart-composicion"></canvas></div>
+          <div id="composicion-vacia" class="mensaje-vacio" hidden><svg class="ic"><use href="#i-grafica"/></svg>Sin datos suficientes</div>
+        </div>
+
+        <!-- (5) Categorías top en el tiempo -->
+        <div class="tarjeta">
+          <div class="etiqueta">Gasto por categoría en el tiempo</div>
+          <div class="lienzo"><canvas id="chart-cats-tiempo"></canvas></div>
+          <div id="cats-tiempo-vacia" class="mensaje-vacio" hidden><svg class="ic"><use href="#i-grafica"/></svg>Sin gastos registrados aún</div>
+        </div>
+      </div>
+
+      <!-- Detalle mes a mes (tocar abre el modal de ajuste de inicio) -->
+      <div class="titulo-seccion"><span class="etiqueta">Detalle por mes</span></div>
+      <div id="lista-meses"></div>
+    </section>
+
+    <!-- ================= VISTA: HISTORIAL ================= -->
+    <section id="vista-historial" class="vista">
+      <div class="tarjeta filtros">
+        <div class="campo-buscar">
+          <svg class="ic"><use href="#i-buscar"/></svg>
+          <input id="fil-buscar" type="search" placeholder="Buscar…" autocomplete="off">
+        </div>
+        <select id="fil-mes"><option value="">Mes: todos</option></select>
+        <select id="fil-cuenta"><option value="">Cuenta: todas</option></select>
+        <select id="fil-tipo">
+          <option value="">Tipo: todos</option>
+          <option>Ingreso</option><option>Gasto</option>
+          <option>Transferencia</option><option>Pago tarjeta</option>
+        </select>
+        <select id="fil-categoria"><option value="">Categoría: todas</option></select>
+        <div id="hist-resumen" class="hist-resumen" hidden></div>
+      </div>
+      <div id="lista-movs"></div>
+    </section>
+
+    <!-- ================= VISTA: AJUSTES =================
+         Grupos de configuración. Moneda base, Monedas y tasas, Cuentas y
+         Categorías los llena app.html (dependen de datos del servidor);
+         Apariencia, Datos y Acerca de son estáticos. -->
+    <section id="vista-ajustes" class="vista">
+
+      <!-- Moneda base -->
+      <div class="grupo-ajustes" id="aj-grupo-base">
+        <div class="titulo-seccion"><span class="etiqueta">Moneda base</span></div>
+        <div class="tarjeta">
+          <p class="ayuda">La moneda en la que se muestra TODO (patrimonio, resúmenes, gráficas). Las cuentas conservan su moneda; solo cambia en qué moneda las lees.</p>
+          <div class="chips" id="aj-base-monedas"></div>
+        </div>
+      </div>
+
+      <!-- Monedas y tasas -->
+      <div class="grupo-ajustes" id="aj-grupo-tasas">
+        <div class="titulo-seccion"><span class="etiqueta">Monedas y tasas de cambio</span></div>
+        <div class="tarjeta">
+          <p class="ayuda" id="aj-tasas-nota">Tasas a COP. La automática viene de Google Finance; si falla, se usa la manual de respaldo (editable).</p>
+          <div id="aj-tasas-lista"></div>
+        </div>
+      </div>
+
+      <!-- Cuentas -->
+      <div class="grupo-ajustes" id="aj-grupo-cuentas">
+        <div class="titulo-seccion">
+          <span class="etiqueta">Cuentas</span>
+          <button id="aj-ordenar" class="btn-mini" type="button" title="Cambiar el orden de las cuentas"><svg class="ic"><use href="#i-orden"/></svg>Ordenar</button>
+        </div>
+        <div class="tarjeta">
+          <div id="aj-cuentas-lista"></div>
+          <div class="modal-botones" style="justify-content:flex-start">
+            <button id="aj-add-cuenta" class="btn-mini" type="button"><svg class="ic"><use href="#i-mas"/></svg>Agregar cuenta</button>
+            <button id="aj-add-deuda" class="btn-mini" type="button"><svg class="ic"><use href="#i-tarjeta-cred"/></svg>Agregar deuda</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Categorías -->
+      <div class="grupo-ajustes" id="aj-grupo-cats">
+        <div class="titulo-seccion">
+          <span class="etiqueta">Categorías</span>
+          <button id="aj-add-cat" class="btn-mini" type="button"><svg class="ic"><use href="#i-mas"/></svg>Nueva</button>
+        </div>
+        <div class="tarjeta">
+          <p class="ayuda">Toca una para renombrarla, cambiarle el emoji, ocultarla o (si no tiene movimientos) eliminarla.</p>
+          <div id="aj-cats-lista"></div>
+        </div>
+      </div>
+
+      <!-- Apariencia -->
+      <div class="grupo-ajustes">
+        <div class="titulo-seccion"><span class="etiqueta">Apariencia</span></div>
+        <div class="tarjeta">
+          <div class="chips" id="aj-tema">
+            <button class="chip" type="button" data-tema="claro"><svg class="ic ic-mini"><use href="#i-sol"/></svg>Claro</button>
+            <button class="chip" type="button" data-tema="oscuro"><svg class="ic ic-mini"><use href="#i-luna"/></svg>Oscuro</button>
+            <button class="chip" type="button" data-tema="auto">Automático</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Datos -->
+      <div class="grupo-ajustes">
+        <div class="titulo-seccion"><span class="etiqueta">Datos</span></div>
+        <div class="tarjeta">
+          <a id="aj-hoja" class="fila-ajuste" href="#" target="_blank" rel="noopener">
+            <span class="fa-txt"><b>Abrir la hoja de Google</b><span class="mini">Ver o corregir los datos directamente</span></span>
+            <svg class="ic"><use href="#i-enlace"/></svg>
+          </a>
+          <p class="ayuda">Tus datos viven en esa hoja. Google guarda su propio historial de versiones, pero de vez en cuando conviene sacar una copia (Archivo → Hacer una copia).</p>
+        </div>
+      </div>
+
+      <!-- Acerca de -->
+      <div class="grupo-ajustes">
+        <div class="titulo-seccion"><span class="etiqueta">Acerca de</span></div>
+        <div class="tarjeta">
+          <div class="fila-ajuste">
+            <span class="fa-txt"><b>Mis Finanzas</b><span class="mini" id="aj-version">—</span></span>
+          </div>
+          <p class="ayuda" id="aj-changelog"></p>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Navegación: barra inferior en móvil, lateral en PC (ver styles.html) -->
+  <nav class="nav-inferior">
+    <div class="marca">💰 Mis Finanzas</div>
+    <!-- Registrar: en móvil es el botón flotante (+); en PC, botón primario del
+         sidebar. Un solo elemento, CSS lo reubica (ver styles.html). -->
+    <button id="btn-registrar" class="nav-registrar" data-vista="registrar" title="Registrar un movimiento"><svg class="ic ic-nav"><use href="#i-mas"/></svg><span>Registrar</span></button>
+    <button class="nav-btn activa" data-vista="resumen"><svg class="ic ic-nav"><use href="#i-panel"/></svg><span>Panel</span></button>
+    <button class="nav-btn" data-vista="meses"><svg class="ic ic-nav"><use href="#i-evolucion"/></svg><span>Evolución</span></button>
+    <button class="nav-btn" data-vista="historial"><svg class="ic ic-nav"><use href="#i-historial"/></svg><span>Historial</span></button>
+    <button class="nav-btn" data-vista="ajustes"><svg class="ic ic-nav"><use href="#i-ajustes"/></svg><span>Ajustes</span></button>
+  </nav>
+
+  <!-- Modal de edición -->
+  <div id="modal-fondo" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2>Editar movimiento</h2>
+      <label class="etiqueta">Tipo</label>
+      <select id="ed-tipo">
+        <option>Gasto</option><option>Ingreso</option>
+        <option>Transferencia</option><option>Pago tarjeta</option>
+      </select>
+      <div class="fila-doble">
+        <div><label class="etiqueta">Monto</label>
+          <input id="ed-valor" type="text" inputmode="decimal"></div>
+        <div><label class="etiqueta">Fecha</label>
+          <input id="ed-fecha" type="date"></div>
+      </div>
+      <label class="etiqueta">Cuenta</label>
+      <select id="ed-cuenta"></select>
+      <div id="ed-bloque-destino">
+        <label class="etiqueta">Cuenta destino</label>
+        <select id="ed-destino"></select>
+      </div>
+      <div id="ed-bloque-valor-destino" hidden>
+        <label class="etiqueta" id="ed-lbl-valor-destino">Llega al destino</label>
+        <input id="ed-valor-destino" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+      </div>
+      <label class="etiqueta">Categoría</label>
+      <select id="ed-categoria"></select>
+      <label class="etiqueta">Descripción</label>
+      <input id="ed-desc" type="text">
+      <div class="modal-botones">
+        <button id="ed-borrar" class="btn-peligro"><svg class="ic"><use href="#i-basura"/></svg>Borrar</button>
+        <button id="ed-cancelar" class="btn-secundario">Cancelar</button>
+        <button id="ed-guardar" class="btn-principal compacto">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de ajuste de saldo -->
+  <div id="modal-ajuste" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2 id="ajuste-titulo">Cuadrar cuenta</h2>
+      <p class="ayuda" id="ajuste-nota"></p>
+
+      <div class="ajuste-fila">
+        <span>La app calcula</span>
+        <b id="ajuste-calculado">—</b>
+      </div>
+
+      <label class="etiqueta" for="aj-real">Saldo real (el del banco)</label>
+      <div class="campo-monto compacto">
+        <span id="aj-simbolo">$</span>
+        <input id="aj-real" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+      </div>
+
+      <div class="ajuste-fila">
+        <span>Diferencia</span>
+        <b id="ajuste-dif">—</b>
+      </div>
+      <p class="ayuda" id="ajuste-explica"></p>
+
+      <div class="modal-botones">
+        <button id="aj-cancelar" class="btn-secundario">Cancelar</button>
+        <button id="aj-guardar" class="btn-principal compacto">Crear ajuste</button>
+      </div>
+
+      <!-- Editar la cuenta (nombre, color, nota, saldo inicial), plegado -->
+      <div class="seccion-si">
+        <button id="si-toggle" class="enlace" type="button"><svg class="ic ic-mini"><use href="#i-lapiz"/></svg>Editar cuenta…</button>
+        <div id="si-bloque" hidden>
+          <label class="etiqueta" for="ec-nombre">Nombre</label>
+          <input id="ec-nombre" type="text" autocomplete="off">
+          <label class="etiqueta">Color</label>
+          <div class="paleta" id="ec-paleta"></div>
+          <label class="etiqueta">Moneda</label>
+          <div class="chips" id="ec-monedas"></div>
+          <label class="etiqueta" for="ec-nota">Nota</label>
+          <input id="ec-nota" type="text" autocomplete="off">
+          <label class="etiqueta" for="si-valor">Saldo inicial (<span id="si-fecha">—</span>)</label>
+          <div class="campo-monto compacto">
+            <span id="si-simbolo">$</span>
+            <input id="si-valor" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+          </div>
+          <p class="ayuda">
+            El <b>saldo inicial</b> es el punto de partida del corte: cámbialo
+            solo si estaba mal escrito (para el día a día usa <b>Cuadrar</b>).
+          </p>
+          <div class="modal-botones">
+            <button id="si-eliminar" class="btn-peligro" hidden><svg class="ic"><use href="#i-basura"/></svg>Eliminar</button>
+            <button id="si-guardar" class="btn-principal compacto">Guardar cambios</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de detalle de un mes -->
+  <div id="modal-mes" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2 id="mes-titulo">—</h2>
+      <div class="resumen-mes">
+        <div><span class="mini">Empezó con</span><b id="mes-inicio">—</b></div>
+        <div><span class="mini">Ingresos</span><b id="mes-ingresos" class="verde">—</b></div>
+        <div><span class="mini">Gastos</span><b id="mes-gastos" class="rojo">—</b></div>
+        <div><span class="mini">Neto</span><b id="mes-neto">—</b></div>
+      </div>
+      <label class="etiqueta" style="margin-top:14px">Con cuánto empezó cada cuenta</label>
+      <div id="mes-cuentas"></div>
+      <p class="ayuda" id="mes-nota"></p>
+
+      <!-- Segundo paso: ajustar el inicio de una cuenta en este mes -->
+      <div id="mes-ajuste" hidden>
+        <label class="etiqueta" id="mes-ajuste-titulo">Ajustar inicio</label>
+        <div class="campo-monto compacto">
+          <span id="mes-ajuste-simbolo">$</span>
+          <input id="mes-ajuste-valor" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+        </div>
+        <div class="ajuste-fila">
+          <span>Diferencia</span>
+          <b id="mes-ajuste-dif">—</b>
+        </div>
+        <p class="ayuda" id="mes-ajuste-explica"></p>
+        <div class="modal-botones">
+          <button id="mes-ajuste-guardar" class="btn-principal compacto">Crear ajuste</button>
+        </div>
+      </div>
+
+      <div class="modal-botones">
+        <button id="mes-cerrar" class="btn-secundario">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de cuenta nueva -->
+  <div id="modal-cuenta" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2 id="nc-titulo">Nueva cuenta</h2>
+      <label class="etiqueta">Tipo</label>
+      <div class="chips" id="nc-tipos">
+        <button class="chip" type="button" data-nctipo="Activo"><svg class="ic ic-mini"><use href="#i-mas-circ"/></svg>Cuenta</button>
+        <button class="chip" type="button" data-nctipo="Deuda"><svg class="ic ic-mini"><use href="#i-tarjeta-cred"/></svg>Deuda</button>
+      </div>
+      <p class="ayuda" id="nc-ayuda"></p>
+      <label class="etiqueta" for="nc-nombre">Nombre</label>
+      <input id="nc-nombre" type="text" placeholder="Ej: Daviplata" autocomplete="off">
+      <label class="etiqueta" id="nc-lbl-saldo">Saldo actual</label>
+      <div class="campo-monto compacto">
+        <span id="nc-simbolo">$</span>
+        <input id="nc-saldo" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+      </div>
+      <label class="etiqueta">Moneda</label>
+      <div class="chips" id="nc-monedas"></div>
+      <label class="etiqueta">Color</label>
+      <div class="paleta" id="nc-paleta"></div>
+      <label class="etiqueta" for="nc-nota">Nota (opcional)</label>
+      <input id="nc-nota" type="text" autocomplete="off">
+      <div class="modal-botones">
+        <button id="nc-cancelar" class="btn-secundario">Cancelar</button>
+        <button id="nc-guardar" class="btn-principal compacto">Crear cuenta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de una categoría (nueva o edición): nombre, emoji, tipo, ocultar -->
+  <div id="modal-cat" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2 id="cat-titulo">Categoría</h2>
+      <label class="etiqueta" for="cat-nombre">Nombre</label>
+      <input id="cat-nombre" type="text" placeholder="Ej: Mascota" autocomplete="off">
+      <label class="etiqueta">Emoji</label>
+      <div class="emoji-grid" id="cat-emoji-grid"></div>
+      <label class="etiqueta" for="cat-tipo">Se sugiere primero en</label>
+      <select id="cat-tipo">
+        <option value="">(ninguno)</option>
+        <option value="Gasto">Gasto</option>
+        <option value="Ingreso">Ingreso</option>
+        <option value="Transferencia">Transferencia</option>
+        <option value="Pago tarjeta">Pago tarjeta</option>
+      </select>
+      <label class="fila-ajuste" for="cat-oculta" id="cat-oculta-fila" style="cursor:pointer">
+        <span class="fa-txt"><b>Ocultar del registro</b><span class="mini">Sigue en el historial, pero no se ofrece al registrar</span></span>
+        <input id="cat-oculta" type="checkbox" style="width:auto;min-height:auto">
+      </label>
+      <div class="modal-botones">
+        <button id="cat-eliminar" class="btn-peligro" hidden><svg class="ic"><use href="#i-basura"/></svg>Eliminar</button>
+        <button id="cat-cancelar" class="btn-secundario">Cancelar</button>
+        <button id="cat-guardar" class="btn-principal compacto">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal de presupuestos -->
+  <div id="modal-presup" class="modal-fondo" hidden>
+    <div class="modal">
+      <h2>Presupuestos</h2>
+      <p class="ayuda">Tope de gasto mensual por categoría. Guarda con el monto vacío (o en 0) para quitar uno.</p>
+      <label class="etiqueta">Categoría</label>
+      <select id="pre-cat"></select>
+      <label class="etiqueta" for="pre-tope">Tope mensual</label>
+      <div class="campo-monto compacto">
+        <span>$</span>
+        <input id="pre-tope" type="text" inputmode="decimal" placeholder="0" autocomplete="off">
+      </div>
+      <div class="modal-botones">
+        <button id="pre-guardar" class="btn-principal compacto">Guardar</button>
+      </div>
+
+      <label class="etiqueta" style="margin-top:14px">Los que existen</label>
+      <div id="pre-lista"></div>
+
+      <div class="modal-botones">
+        <button id="pre-cerrar" class="btn-secundario">Cerrar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast de confirmación / error -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- Velo de carga -->
+  <div id="cargando" class="cargando"><div class="spinner"></div></div>
+
+  <?!= include('app'); ?>
+</body>
+</html>
