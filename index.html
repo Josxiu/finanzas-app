@@ -52,7 +52,7 @@
     <header>
       <h1 id="titulo-vista">Panel</h1>
       <div class="header-botones">
-        <button id="btn-refrescar" class="btn-icono" title="Refrescar datos"><svg class="ic"><use href="#i-refrescar"/></svg></button>
+        <button id="btn-refrescar" class="btn-icono" title="Refrescar datos" aria-label="Refrescar datos"><svg class="ic"><use href="#i-refrescar"/></svg></button>
       </div>
     </header>
 
@@ -108,7 +108,7 @@
               <span class="tc-rol" id="tr-origen-rol">Desde</span>
               <span class="tc-cuenta"><span class="punto" id="tr-origen-punto"></span><span id="tr-origen-nombre">Elige</span></span>
             </button>
-            <button type="button" class="transfer-swap" id="tr-swap" title="Invertir origen y destino"><svg class="ic"><use href="#i-invertir"/></svg></button>
+            <button type="button" class="transfer-swap" id="tr-swap" title="Invertir origen y destino" aria-label="Invertir origen y destino"><svg class="ic"><use href="#i-invertir"/></svg></button>
             <button type="button" class="transfer-card" id="tr-destino">
               <span class="tc-rol" id="tr-destino-rol">Hacia</span>
               <span class="tc-cuenta"><span class="punto" id="tr-destino-punto"></span><span id="tr-destino-nombre">Elige</span></span>
@@ -175,7 +175,7 @@
       <div class="tarjeta">
         <div class="etiqueta-fila">
           <label class="etiqueta">Presupuestos del mes</label>
-          <button id="btn-presup" class="btn-mini" type="button" title="Definir topes de gasto por categoría"><svg class="ic"><use href="#i-lapiz"/></svg>Editar</button>
+          <button id="btn-presup" class="btn-mini" type="button" title="Definir topes de gasto por categoría" aria-label="Editar presupuestos"><svg class="ic"><use href="#i-lapiz"/></svg>Editar</button>
         </div>
         <div id="lista-presup" class="lista-cats"></div>
         <button id="presup-vertodos" class="enlace" type="button" hidden></button>
@@ -660,7 +660,7 @@
   </div>
 
   <!-- Toast de confirmación / error -->
-  <div id="toast" class="toast" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <!-- Velo de carga -->
   <div id="cargando" class="cargando"><div class="spinner"></div></div>

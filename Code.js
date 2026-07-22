@@ -83,7 +83,9 @@ function leerCuentas_(ss) {
       cuenta: String(f[0]),
       saldoInicial: numero_(f[1]),
       fechaCorte: fechaISO_(f[2]),
-      color: String(f[3] || '#1A73E8'),
+      // Se normaliza a hex al leer: el color se usa en innerHTML (sparkline) y
+      // en setProperty; un valor tecleado a mano en la hoja no debe inyectar.
+      color: /^#[0-9A-Fa-f]{6}$/.test(String(f[3] || '').trim()) ? String(f[3]).trim() : '#1A73E8',
       nota: String(f[4] || ''),
       // Sin celda de tipo, el signo decide (deuda = arranca en negativo)
       tipo: String(f[5] || '') || (numero_(f[1]) < 0 ? 'Deuda' : 'Activo'),
@@ -99,7 +101,7 @@ function leerCuentas_(ss) {
 /**
  * Garantiza la columna F "Tipo" en la hoja Cuentas (Activo | Deuda).
  * La primera vez clasifica las cuentas existentes por el signo de su
- * SaldoInicial: una tarjeta de crédito (negativa) queda como Deuda.
+ * SaldoInicial: Tarjeta Nu (negativa) queda como Deuda.
  */
 function asegurarColumnaTipo_(ss) {
   var hoja = ss.getSheetByName('Cuentas');
@@ -329,6 +331,60 @@ function calcularSaldos_(cuentas, movimientos, hastaFechaExclusiva) {
   return saldos;
 }
 
+/**
+ * Saldo de cada cuenta al INICIO de cada mes pedido, en UNA sola pasada.
+ *
+ * Reemplaza a llamar calcularSaldos_ una vez por mes (13 recorridos completos
+ * de los movimientos): aquí se ordenan los movimientos por fecha y se avanza
+ * un puntero aplicándolos una única vez. El saldo al inicio de un mes M es el
+ * saldo corrido justo antes del primer movimiento con fecha >= 'M-01' — que es
+ * EXACTAMENTE lo que devuelve calcularSaldos_(cuentas, movimientos, 'M-01'),
+ * porque ambos aplican solo movimientos con fecha < corte y >= fechaCorte.
+ *
+ * Devuelve un mapa { 'yyyy-MM': { cuenta: saldo } } (en la moneda de cada cuenta).
+ */
+function iniciosDeMes_(cuentas, movimientos, meses) {
+  var porNombre = {}, saldos = {};
+  cuentas.forEach(function (c) { porNombre[c.cuenta] = c; saldos[c.cuenta] = c.saldoInicial; });
+  function aplica(n, f) { var c = porNombre[n]; return c && f >= c.fechaCorte; }
+  function aplicarUno(m) {
+    if (m.tipo === 'Ingreso') {
+      if (aplica(m.cuenta, m.fecha)) saldos[m.cuenta] += m.valor;
+    } else if (m.tipo === 'Gasto') {
+      if (aplica(m.cuenta, m.fecha)) saldos[m.cuenta] -= m.valor;
+    } else if (m.tipo === 'Transferencia' || m.tipo === 'Pago tarjeta') {
+      if (aplica(m.cuenta, m.fecha)) saldos[m.cuenta] -= m.valor;
+      if (aplica(m.cuentaDestino, m.fecha)) {
+        saldos[m.cuentaDestino] += (m.valorDestino > 0 ? m.valorDestino : m.valor);
+      }
+    }
+  }
+
+  // Copia ordenada por fecha ascendente (no muta el array del llamador, que
+  // calcularDatos_ ordena después de forma descendente para el historial).
+  var ordenados = movimientos.slice().sort(function (a, b) {
+    return a.fecha === b.fecha ? a.id - b.id : (a.fecha < b.fecha ? -1 : 1);
+  });
+
+  // Fronteras 'yyyy-MM-01' únicas y ordenadas; el inicio de cada mes es el
+  // snapshot del saldo corrido tras aplicar los movimientos < su frontera.
+  var fronteras = meses.map(function (m) { return m + '-01'; })
+    .sort()
+    .filter(function (f, i, arr) { return i === 0 || f !== arr[i - 1]; });
+
+  var resultado = {}, ptr = 0;
+  fronteras.forEach(function (frontera) {
+    while (ptr < ordenados.length && ordenados[ptr].fecha < frontera) {
+      aplicarUno(ordenados[ptr]);
+      ptr++;
+    }
+    var snap = {};
+    cuentas.forEach(function (c) { snap[c.cuenta] = saldos[c.cuenta]; });
+    resultado[frontera.substring(0, 7)] = snap;
+  });
+  return resultado;
+}
+
 /** Día siguiente de 'yyyy-MM-dd' con aritmética de texto pura (sin Date). */
 function siguienteDia_(iso) {
   var y = Number(iso.substring(0, 4)), m = Number(iso.substring(5, 7)), d = Number(iso.substring(8, 10));
@@ -459,10 +515,61 @@ function resumenMensual_(movimientos, tasaPorCuenta) {
 
 // ---------------------------------------------------------------- API pública
 
+// ------------------- Caché de lectura (opcional)
+
+/**
+ * La app es casi siempre lectura, así que el resultado de getDatos se puede
+ * cachear en CacheService para que reabrir sea instantáneo.
+ *
+ * DESACTIVADO por defecto (CACHE_TTL_SEG = 0): así getDatos se comporta
+ * EXACTAMENTE como antes (siempre fresco) y no cambia nada. Para activarlo,
+ * pon p.ej. CACHE_TTL_SEG = 120. El trade-off: la PRIMERA apertura mostraría
+ * datos de hasta esos segundos; el botón ⟳ y "volver a la app" siempre fuerzan
+ * fresco (el cliente los llama con forzar=true), así que la frescura al
+ * refrescar no cambia. Cada escritura invalida el caché, así que tras
+ * registrar algo los datos nuevos se ven al instante.
+ *
+ * Si el resultado no cabe en caché (>100 KB: muchas cuentas/movimientos), se
+ * omite en silencio y la app sigue funcionando igual.
+ */
+var CACHE_KEY_DATOS = 'finanzas:getDatos:v1';
+var CACHE_TTL_SEG = 0; // 0 = desactivado (siempre fresco). p.ej. 120 para activar.
+
+function invalidarCacheDatos_() {
+  if (CACHE_TTL_SEG <= 0) return;
+  try { CacheService.getScriptCache().remove(CACHE_KEY_DATOS); }
+  catch (e) { /* sin caché activo no hay nada que borrar */ }
+}
+
 /**
  * Un solo viaje al servidor: todo lo que la app necesita para pintarse.
+ *
+ * forzar=true (escrituras, botón ⟳ y "volver a la app") ignora el caché,
+ * recalcula y lo re-llena. Con CACHE_TTL_SEG = 0 va siempre al cálculo fresco.
  */
-function getDatos() {
+function getDatos(forzar) {
+  if (CACHE_TTL_SEG > 0) {
+    var cache = CacheService.getScriptCache();
+    if (!forzar) {
+      var guardado = cache.get(CACHE_KEY_DATOS);
+      if (guardado) {
+        try { return JSON.parse(guardado); } catch (e) { /* caché corrupto: recalcular */ }
+      }
+    } else {
+      invalidarCacheDatos_();
+    }
+  }
+  var datos = calcularDatos_();
+  if (CACHE_TTL_SEG > 0) {
+    // cache ya quedó asignada arriba (mismo guard TTL>0); var es de función.
+    try { cache.put(CACHE_KEY_DATOS, JSON.stringify(datos), CACHE_TTL_SEG); }
+    catch (e) { /* no cabe o error: seguir sin caché, la app funciona igual */ }
+  }
+  return datos;
+}
+
+/** Cálculo completo de los datos (lo que antes era el cuerpo de getDatos). */
+function calcularDatos_() {
   var ss = abrirLibro_();
 
   // La hoja debe interpretar fechas en la misma zona que la app: si quedó en
@@ -512,20 +619,24 @@ function getDatos() {
 
   // Patrimonio con el que EMPEZÓ el mes: saldos sin los movimientos del mes.
   var hoy = Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd');
-  var saldosInicioMes = calcularSaldos_(cuentas, movimientos, hoy.substring(0, 7) + '-01');
-  var patrimonioInicioMes = 0;
-  cuentas.forEach(function (c) { patrimonioInicioMes += saldosInicioMes[c.cuenta] * c.tasa; });
-
   var resumen = resumenMensual_(movimientos, tasaPorCuenta);
 
-  // Inicio de cada mes: por cuenta en su moneda (modal de mes), total en COP.
+  // Inicio de cada mes (por cuenta en su moneda, modal de mes) y el patrimonio
+  // con el que EMPEZÓ el mes actual, en UNA sola pasada sobre los movimientos
+  // ordenados (iniciosDeMes_), en vez de 13 calcularSaldos_ que recorrían todos
+  // los movimientos una y otra vez. El mes actual es el último de los 12
+  // (ultimosMeses_ termina en hoy), así que su inicio ES el arranque del mes.
+  var inicios = iniciosDeMes_(cuentas, movimientos,
+    resumen.meses.map(function (m) { return m.mes; }));
+  var patrimonioInicioMes = 0;
   resumen.meses.forEach(function (m) {
-    var s = calcularSaldos_(cuentas, movimientos, m.mes + '-01');
+    var s = inicios[m.mes];
     m.inicioPorCuenta = s;
     var total = 0;
     cuentas.forEach(function (c) { total += s[c.cuenta] * c.tasa; });
     m.inicio = total;
   });
+  patrimonioInicioMes = resumen.meses[resumen.meses.length - 1].inicio;
 
   // Saldo diario por cuenta (vista de cuenta, patrimonio y sparklines)
   var historia = calcularHistoria_(cuentas, movimientos, hoy);
@@ -657,7 +768,7 @@ function agregarMovimiento(mov) {
     var ss = abrirLibro_();
     escribirMovimiento_(ss, mov);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -682,7 +793,7 @@ function editarMovimiento(mov) {
     ]]);
     escribirFechaTexto_(hoja.getRange(fila, 2), mov.fecha);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -699,7 +810,7 @@ function borrarMovimiento(id) {
     if (fila < 0) throw new Error('No encontré el movimiento con ID ' + id + '.');
     hoja.deleteRow(fila);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -746,7 +857,7 @@ function ajustarSaldo(cuenta, saldoReal) {
     var diferencia = Math.round((real - actual) * 100) / 100;
 
     // Ya está cuadrada: no ensuciamos el historial con una fila de cero.
-    if (Math.abs(diferencia) < 0.01) return getDatos();
+    if (Math.abs(diferencia) < 0.01) return getDatos(true);
 
     asegurarCategoriaAjuste_(ss);
     escribirMovimiento_(ss, {
@@ -759,7 +870,7 @@ function ajustarSaldo(cuenta, saldoReal) {
       valor: Math.abs(diferencia)
     });
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -815,7 +926,7 @@ function ajustarInicioMes(cuenta, mes, saldoRealInicio) {
     var movimientos = leerMovimientos_(ss);
     var inicio = calcularSaldos_(cuentas, movimientos, mes + '-01')[cuenta];
     var diferencia = Math.round((real - inicio) * 100) / 100;
-    if (Math.abs(diferencia) < 0.01) return getDatos(); // ya cuadrado
+    if (Math.abs(diferencia) < 0.01) return getDatos(true); // ya cuadrado
 
     asegurarCategoriaAjuste_(ss);
     escribirMovimiento_(ss, {
@@ -828,7 +939,7 @@ function ajustarInicioMes(cuenta, mes, saldoRealInicio) {
       valor: Math.abs(diferencia)
     });
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -872,7 +983,7 @@ function agregarCuenta(c) {
     hoja.getRange(ultima + 1, 1, 1, 7).setValues([[nombre, saldo, '', color, String(c.nota || ''), tipo, moneda]]);
     escribirFechaTexto_(hoja.getRange(ultima + 1, 3), hoy);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -896,7 +1007,7 @@ function eliminarCuenta(nombre) {
       if (String(filas[i][0]) === String(nombre)) {
         hoja.deleteRow(i + 1);
         SpreadsheetApp.flush();
-        return getDatos();
+        return getDatos(true);
       }
     }
     throw new Error('La cuenta "' + nombre + '" no existe en la hoja Cuentas.');
@@ -927,7 +1038,7 @@ function agregarCategoria(c) {
 
     ss.getSheetByName('Categorias').appendRow([nombre, tipo, icono]);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -980,7 +1091,7 @@ function editarCategoria(nombreActual, cambios) {
       }
     }
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -1002,7 +1113,7 @@ function eliminarCategoria(nombre) {
       if (String(filas[i][0]) === String(nombre)) {
         hoja.deleteRow(i + 1);
         SpreadsheetApp.flush();
-        return getDatos();
+        return getDatos(true);
       }
     }
     throw new Error('La categoría "' + nombre + '" no existe en la hoja Categorias.');
@@ -1048,7 +1159,7 @@ function guardarPresupuesto(categoria, tope) {
       hoja.appendRow([String(categoria), t]);
     }
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -1076,7 +1187,7 @@ function guardarMonedaBase(codigo) {
     }
     escribirConfigClave_(ss.getSheetByName('Config'), 'MonedaBase', codigo);
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -1099,7 +1210,7 @@ function guardarTasaManual(par, valor) {
       if (String(filas[i][0]).trim().toUpperCase() === par) {
         hoja.getRange(i + 1, 3).setValue(v); // columna C = TasaManual
         SpreadsheetApp.flush();
-        return getDatos();
+        return getDatos(true);
       }
     }
     throw new Error('No encontré la fila de ' + par + ' en Config.');
@@ -1124,7 +1235,7 @@ function guardarCatsOcultas(lista) {
     }
     escribirConfigClave_(ss.getSheetByName('Config'), 'CatsOcultas', limpio.join('|'));
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -1197,7 +1308,7 @@ function editarCuenta(nombreActual, cambios) {
       }
     }
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }
@@ -1236,7 +1347,7 @@ function reordenarCuentas(nombresEnOrden) {
       hoja.getRange(posiciones[k], 1, 1, 7).setValues([datosPorNombre[n]]);
     });
     SpreadsheetApp.flush();
-    return getDatos();
+    return getDatos(true);
   } finally {
     lock.releaseLock();
   }

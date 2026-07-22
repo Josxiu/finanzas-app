@@ -40,6 +40,8 @@
     --verde: #188038;
     --rojo: #C5221F;
     --ambar: #F9AB00;         /* semáforo de presupuestos (antes hardcodeado) */
+    --ambar-texto: #9a6a00;   /* texto ámbar legible sobre fondo claro (badge tasa manual) */
+    --sobre-primario: #D2E3FC;/* textos/etiquetas sobre el fondo azul --primario */
     --borde: #E4E7EC;
     --borde-tarjeta: #EEF0F3; /* borde sutil de tarjetas (en oscuro es el separador real) */
     --divisor: #EEF0F4;
@@ -68,6 +70,8 @@
     --verde: #6DD58C;
     --rojo: #F28B82;
     --ambar: #FDD663;
+    --ambar-texto: var(--ambar);
+    --sobre-primario: #AECBFA;
     --borde: #39414B;
     --borde-tarjeta: #2C333C;
     --divisor: #2A313A;
@@ -171,7 +175,7 @@
   .equiv { font-size: 13.5px; font-weight: 500; color: var(--texto); display: block; }
   /* Código de moneda discreto junto a una cifra clave ("$ 2.544.390 COP") */
   .cod-moneda { font-size: .55em; font-weight: 600; color: var(--texto-suave); margin-left: 2px; }
-  .patrimonio .cod-moneda { color: #D2E3FC; }
+  .patrimonio .cod-moneda { color: var(--sobre-primario); }
   .verde { color: var(--verde); }
   .rojo { color: var(--rojo); }
 
@@ -276,9 +280,9 @@
 
   /* ============ Panel ============ */
   .patrimonio { background: var(--primario); color: #fff; border-color: transparent; }
-  .patrimonio .etiqueta { color: #D2E3FC; }
+  .patrimonio .etiqueta { color: var(--sobre-primario); }
   .valor-grande { font-size: var(--t-cifra-grande); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .patrimonio-desglose { font-size: 13px; color: #D2E3FC; margin-top: var(--e1); font-variant-numeric: tabular-nums; }
+  .patrimonio-desglose { font-size: 13px; color: var(--sobre-primario); margin-top: var(--e1); font-variant-numeric: tabular-nums; }
 
   /* Encabezado de sección: etiqueta a la izquierda, acción a la derecha */
   .titulo-seccion {
@@ -559,7 +563,7 @@
     font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
     padding: 2px 8px; border-radius: 999px; background: var(--suave); color: var(--texto-suave); white-space: nowrap;
   }
-  .tasa-fila .tf-badge.manual { background: color-mix(in srgb, var(--ambar) 22%, var(--tarjeta)); color: #9a6a00; }
+  .tasa-fila .tf-badge.manual { background: color-mix(in srgb, var(--ambar) 22%, var(--tarjeta)); color: var(--ambar-texto); }
   .tasa-fila .tf-badge.sintasa { background: var(--peligro-fondo); color: var(--rojo); }
   html[data-tema="oscuro"] .tasa-fila .tf-badge.manual { color: var(--ambar); }
   .tasa-fila .btn-mini { min-height: 34px; }

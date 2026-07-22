@@ -71,6 +71,8 @@ function simboloDe(moneda) { return infoMoneda(moneda).simbolo; }
 
 /** Número con miles es-CO. dec=0 = enteros salvo que haya centavos reales. */
 function numeroMoneda(n, dec) {
+  n = Number(n);
+  if (!isFinite(n)) n = 0; // evita mostrar "NaN" si una tasa o cálculo se rompe
   if (dec === 0) {
     return (Math.round(n * 100) % 100 === 0)
       ? Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 })
@@ -215,6 +217,9 @@ function toast(msg, tipo) {
   var t = $('toast');
   t.textContent = msg;
   t.className = 'toast ' + (tipo || '');
+  // Los errores se anuncian de inmediato (assertive); el resto, sin interrumpir.
+  t.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+  t.setAttribute('aria-live', tipo === 'error' ? 'assertive' : 'polite');
   t.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
@@ -266,7 +271,7 @@ function llamar(fn, args, alTerminar) {
     });
   r[fn].apply(r, args);
 }
-function cargarDatos(silencioso) {
+function cargarDatos(silencioso, forzar) {
   if (!silencioso) cargando(true);
   google.script.run
     .withSuccessHandler(function (resp) { datos = resp; cargando(false); renderTodo(); })
@@ -274,7 +279,9 @@ function cargarDatos(silencioso) {
       cargando(false);
       toast(err && err.message ? err.message : 'No pude cargar los datos', 'error');
     })
-    .getDatos();
+    // forzar=true ignora el caché del servidor (botón ⟳ y "volver a la app");
+    // la primera carga no lo pasa, así que puede usar caché si está activado.
+    .getDatos(forzar);
 }
 
 // ------------------------------------------------ Esqueletos de carga inicial
@@ -304,11 +311,12 @@ function pintarEsqueletos() {
 function renderTodo() {
   if (!datos) return;
   monedaBase = datos.monedaBase || 'COP'; // en qué moneda se muestra todo
-  renderChipsRegistrar();
-  renderResumen();
-  renderMeses();
-  renderFiltros();
-  renderHistorial();
+  // Cada bloque va aislado: si uno falla (un dato raro, Chart.js, etc.) el
+  // resto de la UI se sigue pintando en vez de quedar a medio renderizar.
+  [renderChipsRegistrar, renderResumen, renderMeses, renderFiltros, renderHistorial]
+    .forEach(function (fn) {
+      try { fn(); } catch (e) { console.error('renderTodo: falló ' + fn.name, e); }
+    });
   manejarHash(); // si hay una cuenta abierta (o llega en el hash), refrescarla
 }
 
@@ -366,7 +374,12 @@ function chipCuenta(c, activa, onclick) {
   b.type = 'button';
   b.className = 'chip' + (activa ? ' activa' : '');
   b.style.setProperty('--color-cuenta', c.color);
-  b.innerHTML = '<span class="punto"></span>' + c.cuenta;
+  // textContent: el nombre de la cuenta viene de la hoja (editable a mano);
+  // nunca se concatena como HTML para evitar XSS almacenado.
+  var punto = document.createElement('span');
+  punto.className = 'punto';
+  b.appendChild(punto);
+  b.appendChild(document.createTextNode(c.cuenta));
   b.onclick = onclick;
   return b;
 }
@@ -2594,7 +2607,7 @@ document.addEventListener('DOMContentLoaded', function () {
   elegirTipo('Gasto');
 
   $('btn-guardar').onclick = guardar;
-  $('btn-refrescar').onclick = function () { cargarDatos(false); };
+  $('btn-refrescar').onclick = function () { cargarDatos(false, true); }; // ⟳ siempre trae fresco
   document.querySelectorAll('.nav-btn').forEach(function (b) {
     b.onclick = function () { irA(b.dataset.vista); };
   });
@@ -2777,7 +2790,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Recarga automática al volver a la app (cambio de pestaña / desbloquear el celular)
   document.addEventListener('visibilitychange', function () {
-    if (document.visibilityState === 'visible' && datos) cargarDatos(true);
+    if (document.visibilityState === 'visible' && datos) cargarDatos(true, true); // volver a la app = fresco
   });
 
   // Primera carga: esqueletos en el Panel (sin velo) mientras llega getDatos
