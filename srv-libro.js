@@ -80,6 +80,20 @@ function libroDelDueno_() {
   return null;
 }
 
+/**
+ * RESCATE (para el dueño): si la app te mostró una hoja vacía en vez de la
+ * tuya, ejecuta esta función desde el editor de Apps Script (selecciónala
+ * arriba y dale a "Ejecutar"). Vuelve a apuntar TU usuario a la hoja vinculada.
+ * No borra nada: la hoja vacía que se haya creado queda en tu Drive.
+ */
+function usarHojaVinculada() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss && SPREADSHEET_ID && SPREADSHEET_ID !== 'TU_ID_DE_HOJA_AQUI') ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  if (!ss) throw new Error('Este script no está vinculado a ninguna hoja.');
+  PropertiesService.getUserProperties().setProperty(PROP_LIBRO, ss.getId());
+  return 'Listo: la app vuelve a usar "' + ss.getName() + '".';
+}
+
 // Categorías con las que arranca una hoja nueva (se editan desde Ajustes)
 var CATEGORIAS_INICIALES = [
   ['Comida', 'Gasto', '🍔'],
