@@ -110,7 +110,7 @@ function escribirMovimiento_(ss, mov) {
  * devuelve el estado tal cual en vez de duplicar el gasto.
  */
 function agregarMovimiento(mov) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000); // evita IDs duplicados si hay dos escrituras a la vez
   try {
     var ss = abrirLibro_();
@@ -130,7 +130,7 @@ function agregarMovimiento(mov) {
 
 /** Edita el movimiento cuyo ID coincida y devuelve los datos actualizados. */
 function editarMovimiento(mov) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -155,7 +155,7 @@ function editarMovimiento(mov) {
 
 /** Borra el movimiento por ID y devuelve los datos actualizados. */
 function borrarMovimiento(id) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -197,7 +197,7 @@ function asegurarCategoriaAjuste_(ss) {
  * pantalla puede estar viejo y produciría un ajuste equivocado.
  */
 function ajustarSaldo(cuenta, saldoReal) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -243,7 +243,7 @@ function ajustarSaldo(cuenta, saldoReal) {
  * después — quede cuadrado sin tocar nada más.
  */
 function ajustarInicioMes(cuenta, mes, saldoRealInicio) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -387,7 +387,7 @@ function generarRecurrentes_(ss, hoy) {
 
 /** Crea o actualiza un recurrente. `r.id` vacío = nuevo. */
 function guardarRecurrente(r) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -433,7 +433,7 @@ function guardarRecurrente(r) {
 
 /** Elimina un recurrente por id (los movimientos ya creados no se tocan). */
 function eliminarRecurrente(id) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();

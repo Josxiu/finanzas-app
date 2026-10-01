@@ -73,5 +73,5 @@ if ($linea -and ("$linea" -match '(AKfycb[\w-]+)')) {
     Write-Host "`nNo hay implementacion todavia (primera vez). En el editor:" -ForegroundColor Yellow
     Write-Host "  clasp open-script   -> abre el editor"
     Write-Host "  Implementar > Nueva implementacion > Aplicacion web"
-    Write-Host "  Ejecutar como: Yo | Acceso: Solo yo -> Implementar"
+    Write-Host "  Ejecutar como: Usuario que accede | Acceso: Cualquier usuario con cuenta de Google -> Implementar"
 }

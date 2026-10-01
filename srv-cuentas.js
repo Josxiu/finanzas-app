@@ -8,7 +8,7 @@
 
 /** Crea una cuenta nueva: arranca HOY con el saldo que se indique. */
 function agregarCuenta(c) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -54,7 +54,7 @@ function agregarCuenta(c) {
 
 /** Elimina una cuenta SOLO si ningún movimiento la usa (si no, rompería el historial). */
 function eliminarCuenta(nombre) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -90,7 +90,7 @@ function eliminarCuenta(nombre) {
  * Acepta también el formato viejo editarCuenta(nombre, numero) por si acaso.
  */
 function editarCuenta(nombreActual, cambios) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -159,7 +159,7 @@ function editarCuenta(nombreActual, cambios) {
  * (no toca la fila de nota del final ni nada más).
  */
 function reordenarCuentas(nombresEnOrden) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();

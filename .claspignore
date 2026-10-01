@@ -12,6 +12,7 @@
 !srv-cuentas.js
 !srv-categorias.js
 !srv-config.js
+!srv-libro.js
 !index.html
 !estilos-tokens.html
 !estilos-base.html

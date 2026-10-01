@@ -14,7 +14,8 @@ app al refrescar, y viceversa. Cada quien la despliega contra su propia hoja
 | `index.html` | Estructura de la página; incluye los módulos con `<?!= include('…') ?>` |
 | `estilos-*.html` | CSS: tokens, base, componentes y vistas |
 | `app-*.html` | JavaScript del cliente, un módulo por vista (`app-core` y `app-arranque` primero y último) |
-| `appsscript.json` | Manifiesto: timezone Bogotá, web app "Solo yo" |
+| `appsscript.json` | Manifiesto: timezone Bogotá; la web app corre como quien la abre (ver "Compartir la app") |
+| `srv-libro.js` | Qué hoja abre cada usuario, y crearla la primera vez |
 | `.claspignore` | **Lista blanca** de lo que sube a Apps Script: un archivo nuevo debe agregarse ahí |
 | `desplegar.ps1` | Sube todo con clasp (login + create + push) |
 | `preview/generar_preview.js` | Genera una versión de prueba local (ver "Probar localmente") |
@@ -30,7 +31,7 @@ app al refrescar, y viceversa. Cada quien la despliega contra su propia hoja
 3. Primera implementación (una sola vez):
    - `clasp open-script` para abrir el editor.
    - **Implementar > Nueva implementación >** ⚙ **Aplicación web**.
-   - *Ejecutar como:* **Yo** · *Quién tiene acceso:* **Solo yo** → **Implementar**.
+   - *Ejecutar como:* **Usuario que accede a la aplicación web** · *Quién tiene acceso:* **Cualquier usuario con una cuenta de Google** → **Implementar** (ver "Compartir la app").
    - Autoriza los permisos (ver "Problemas comunes").
    - Copia la **URL que termina en `/exec`**: esa es tu app.
 
@@ -40,6 +41,30 @@ powershell -ExecutionPolicy Bypass -File .\desplegar.ps1     # (o directamente: 
 ```
 Luego en el editor: **Implementar > Administrar implementaciones > ✏ (editar) > Versión: Nueva versión > Implementar**.
 La URL `/exec` no cambia.
+
+## Compartir la app (cada quien con sus datos)
+
+La app se ejecuta **como quien la abre** (`USER_ACCESSING`), así que cada
+persona entra con su propia cuenta de Google y solo puede tocar las hojas de su
+Drive:
+
+- **El dueño** (quien despliega) sigue usando la hoja a la que está vinculado el
+  script. Se reconoce comparando su correo con el dueño de esa hoja.
+- **Cualquier otra persona**, la primera vez que abre la URL, recibe una hoja
+  nueva en su Drive ("Finanzas App - Base de datos") con Cuentas, Categorías
+  (unas de ejemplo) y Movimientos. Crea sus cuentas desde la app y listo.
+- El ID de la hoja de cada uno se guarda en las *propiedades de usuario* del
+  script (privadas por persona). Si esa hoja deja de poder abrirse, la app avisa
+  en vez de crear otra en silencio.
+
+Para compartirla basta con pasar la URL `/exec`. La primera vez Google pide
+autorizar los permisos y avisa que la app **no está verificada**: es normal en
+una app personal (**Configuración avanzada > Ir a Finanzas App**). Todos usan el
+mismo código: cuando se despliega una versión nueva, la reciben todos.
+
+Ojo: el permiso que se autoriza es "ver y editar tus hojas de cálculo", porque la
+app corre con la cuenta de cada persona. Quien controla el código podría, en
+teoría, cambiarlo para leer otras hojas: compártela solo con gente de confianza.
 
 ## Opción B — Sin clasp (pegar a mano)
 
