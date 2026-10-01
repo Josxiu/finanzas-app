@@ -250,7 +250,7 @@ function aplicarTema(modo) {
   var ef = temaEfectivo(modo);
   document.documentElement.setAttribute('data-tema', ef);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = ef === 'oscuro' ? '#171B21' : '#1A73E8';
+  if (meta) meta.content = ef === 'oscuro' ? '#0B0F14' : '#F2F4F7';
   if (typeof Chart !== 'undefined') {
     // Sin esto, los textos de Chart.js quedan ilegibles al cambiar de tema
     Chart.defaults.color = ef === 'oscuro' ? '#BDC1C6' : '#5F6368';

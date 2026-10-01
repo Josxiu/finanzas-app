@@ -70,8 +70,8 @@
     --alto-tipo: 64px;      /* botón de tipo de movimiento */
 
     /* ------------------------------------------------------------- Radios */
-    --radio: 16px;          /* tarjetas y modales */
-    --radio-chip: 10px;     /* chips, inputs, botones pequeños */
+    --radio: 20px;          /* tarjetas y modales */
+    --radio-chip: 12px;     /* chips, inputs, botones pequeños */
     --radio-pildora: 999px; /* toast, FAB, badges */
 
     /* --------------------------------------------------------- Tipografía
@@ -127,68 +127,94 @@
     /* ----------------------------------------------------------- Duración */
     --trans: .16s;
 
-    /* -------------------------------------------------- Paleta clara
-       Fondo neutro y 3 niveles de elevación (fondo/tarjeta/suave). Un solo azul
-       de acento; verde/rojo/ámbar SOLO para dinero y semáforos. */
-    --fondo: #F7F8FA;
+    /* -------------------------------------------------- Paleta clara (v12: "Índigo claro")
+       Fondo gris frío y tarjetas blancas; un índigo de acento. Lo que entra va
+       en verde azulado y lo que sale en naranja quemado (siempre con signo, así
+       se distinguen también sin color). El patrimonio va en una tarjeta oscura
+       (--hero) para que sea lo primero que se lee. */
+    --fondo: #F2F4F7;
     --tarjeta: #FFFFFF;
-    --suave: #F2F4F7;
-    --primario: #1A73E8;      /* fondos de acento (botón principal, patrimonio) */
-    --acento: #1A73E8;        /* textos de acento (títulos, nav activa) */
-    --acento-suave: #E8F0FE;
-    --texto: #1D2129;
-    --texto-suave: #5D6673;
-    --verde: #188038;
-    --rojo: #C5221F;
+    --suave: #EEF1F4;
+    --primario: #2B4BD8;      /* fondos de acento (botón principal, + de la barra) */
+    --acento: #2B4BD8;        /* textos de acento (enlaces, nav activa) */
+    --acento-suave: #E8ECFC;
+    --texto: #101828;
+    --texto-suave: #556070;
+    --verde: #0B6E5F;         /* entró */
+    --rojo: #B93815;          /* salió, deudas y errores */
     --ambar: #F9AB00;         /* semáforo de presupuestos */
-    --ambar-texto: #9a6a00;   /* texto ámbar legible sobre fondo claro */
-    --sobre-primario: #D2E3FC;/* textos/etiquetas sobre el fondo azul --primario */
+    --ambar-texto: #8A3A0F;   /* texto de aviso legible sobre fondo claro */
+    --aviso-fondo: #FFF3E8;
+    --sobre-primario: #D5DCFA;/* textos/etiquetas sobre el fondo --primario */
+    --hero: #101828;          /* tarjeta del patrimonio */
+    --hero-texto: #FFFFFF;
+    --hero-suave: #B8C0CC;
+    --hero-linea: rgba(255,255,255,.12);
+    --hero-sube: #7FE0C8;
+    --barra-entra: #0F8A77;
+    --barra-sale: #E0712B;
+    /* Colores de la dona "¿En qué se fue?" (del más grande al resto) */
+    --dona-1: #2F7D4A; --dona-2: #E0712B; --dona-3: #C99A06;
+    --dona-4: #2B4BD8; --dona-5: #8A55B0; --dona-6: #98A2B3;
     --borde: #E4E7EC;
-    --borde-tarjeta: #EEF0F3; /* borde sutil de tarjetas (en oscuro es el separador real) */
-    --divisor: #EEF0F4;
-    --peligro-fondo: #FCE8E6;
+    --borde-tarjeta: #EDF0F3; /* borde sutil de tarjetas (en oscuro es el separador real) */
+    --divisor: #F0F2F5;
+    --peligro-fondo: #FCEAE3;
     --placeholder: #C6CBD3;
-    --spinner: #D2E3FC;
-    --velo: rgba(247,248,250,.7);
-    --overlay: rgba(29,33,41,.5);
-    --toast: #1D2129;
+    --spinner: #D5DCFA;
+    --velo: rgba(242,244,247,.7);
+    --overlay: rgba(16,24,40,.5);
+    --toast: #101828;
     --toast-texto: #fff;
     --sobre-color: #fff;      /* texto sobre un fondo de color pleno */
-    --sombra-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.07);
+    --sombra-1: 0 1px 2px rgba(16,24,40,.04), 0 1px 3px rgba(16,24,40,.05);
     --sombra-2: 0 2px 4px rgba(16,24,40,.05), 0 6px 16px rgba(16,24,40,.10);
     --sombra-3: 0 4px 8px rgba(16,24,40,.06), 0 14px 36px rgba(16,24,40,.18);
-    --sombra-nav: 0 -1px 6px rgba(0,0,0,.06);
+    --sombra-nav: 0 -1px 6px rgba(0,0,0,.05);
+    --sombra-mas: 0 8px 20px rgba(43,75,216,.35);
     color-scheme: light;
   }
 
   /* Modo oscuro: mismos roles, otra paleta. Los colores de cuenta (de la hoja)
      no cambian. Las sombras casi desaparecen: separan los bordes. */
   html[data-tema="oscuro"] {
-    --fondo: #14181D;
-    --tarjeta: #1E242B;
-    --suave: #262D35;
-    --acento: #8AB4F8;
-    --acento-suave: #1E3A5F;
-    --texto: #E8EAED;
-    --texto-suave: #9AA4B2;
-    --verde: #6DD58C;
-    --rojo: #F28B82;
+    --fondo: #0B0F14;
+    --tarjeta: #151A21;
+    --suave: #1C232C;
+    --primario: #4C63D9;      /* más oscuro que el acento: lleva texto blanco encima */
+    --acento: #8EA4FF;
+    --acento-suave: #1E2742;
+    --texto: #E8EDF3;
+    --texto-suave: #9AA5B4;
+    --verde: #5ED6B6;
+    --rojo: #FF9F6B;
     --ambar: #FDD663;
-    --ambar-texto: var(--ambar);
-    --sobre-primario: #AECBFA;
-    --borde: #39414B;
-    --borde-tarjeta: #2C333C;
-    --divisor: #2A313A;
-    --peligro-fondo: #3A2422;
+    --ambar-texto: #FFC48A;
+    --aviso-fondo: #33230F;
+    --sobre-primario: #C9D3FF;
+    --hero: #1D2745;
+    --hero-texto: #FFFFFF;
+    --hero-suave: #B4BED0;
+    --hero-linea: rgba(255,255,255,.10);
+    --hero-sube: #5ED6B6;
+    --barra-entra: #3FBF9E;
+    --barra-sale: #F08A52;
+    --dona-1: #4CBF7A; --dona-2: #F08A52; --dona-3: #E2B93B;
+    --dona-4: #8EA4FF; --dona-5: #B98AE0; --dona-6: #5D6876;
+    --borde: #2C3440;
+    --borde-tarjeta: #202731;
+    --divisor: #202731;
+    --peligro-fondo: #3A2318;
     --placeholder: #4A525C;
-    --spinner: #2E4562;
-    --velo: rgba(20,24,29,.7);
+    --spinner: #2E3A66;
+    --velo: rgba(11,15,20,.7);
     --overlay: rgba(0,0,0,.6);
-    --toast: #E8EAED;
-    --toast-texto: #1D2129;
+    --toast: #E8EDF3;
+    --toast-texto: #0B0F14;
     --sombra-1: 0 1px 2px rgba(0,0,0,.30);
     --sombra-2: 0 2px 6px rgba(0,0,0,.35);
     --sombra-3: 0 10px 30px rgba(0,0,0,.5);
+    --sombra-mas: 0 8px 20px rgba(0,0,0,.55);
     color-scheme: dark;
   }
 </style>

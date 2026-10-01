@@ -66,19 +66,103 @@
   }
   /* En Registrar el CTA es Guardar: el FAB estorba, se esconde (solo móvil) */
   @media (max-width: 899px) {
-    body.en-registrar .nav-registrar { display: none; }
+    body.en-registrar .nav-registrar { visibility: hidden; } /* conserva su casilla */
   }
 
   /* ========================================================== Vista: Panel */
   /* Cabecera: apilada en móvil, dos columnas en PC (ver el bloque de escritorio) */
+  /* En móvil: patrimonio, botones rápidos y "Este mes", en ese orden (en el
+     DOM los rápidos van al final para que en PC ocupen una fila entera abajo). */
+  .panel-hero { display: flex; flex-direction: column; }
+  .panel-hero > .patrimonio { order: 1; }
+  .panel-hero > .acciones-rapidas { order: 2; }
+  .panel-hero > .tarjeta-mes { order: 3; }
   .panel-hero > .tarjeta { margin-bottom: var(--e3); }
-  .patrimonio { background: var(--primario); color: var(--sobre-color); border-color: transparent; }
-  .patrimonio .etiqueta { color: var(--sobre-primario); }
-  .patrimonio .cod-moneda { color: var(--sobre-primario); }
-  .patrimonio-desglose {
-    font-size: var(--t-nota); color: var(--sobre-primario);
-    margin-top: var(--e1); font-variant-numeric: tabular-nums;
+  .patrimonio {
+    background: var(--hero); color: var(--hero-texto); border-color: transparent;
+    border-radius: calc(var(--radio) + 4px); padding: var(--e4b) var(--e4b) var(--e4);
   }
+  .patrimonio .etiqueta { color: var(--hero-suave); text-transform: none; letter-spacing: 0; font-size: var(--t-nota); }
+  .patrimonio .valor-grande { font-weight: 800; letter-spacing: -0.02em; font-size: 36px; }
+  .patrimonio .cod-moneda { color: var(--hero-suave); }
+  .patrimonio-desglose {
+    font-size: var(--t-nota); color: var(--hero-suave);
+    margin-top: var(--e2); padding-top: var(--e2b); border-top: 1px solid var(--hero-linea);
+    font-variant-numeric: tabular-nums;
+  }
+  .patrimonio-desglose + .patrimonio-desglose { border-top: none; padding-top: 0; margin-top: var(--e1); }
+
+  /* Botones rápidos: abren Registrar con el tipo ya elegido */
+  .acciones-rapidas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--e2); margin-bottom: var(--e3); }
+  .accion-rapida {
+    display: flex; flex-direction: column; align-items: center; gap: var(--e2);
+    padding: var(--e3) var(--e1); border: none; border-radius: var(--radio);
+    background: var(--tarjeta); box-shadow: var(--sombra-1); cursor: pointer;
+    font: inherit; font-size: var(--t-caption); font-weight: 700; color: var(--texto);
+  }
+  .accion-rapida:active { transform: scale(.97); }
+  .ar-icono {
+    width: var(--alto-toque-min); height: var(--alto-toque-min); border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ar-icono .ic { width: 22px; height: 22px; }
+  .ar-icono.gasto { background: color-mix(in srgb, var(--barra-sale) 16%, var(--tarjeta)); color: var(--rojo); }
+  .ar-icono.ingreso { background: color-mix(in srgb, var(--barra-entra) 16%, var(--tarjeta)); color: var(--verde); }
+  .ar-icono.transfer { background: var(--acento-suave); color: var(--acento); }
+  .ar-icono.pago { background: color-mix(in srgb, var(--dona-5) 18%, var(--tarjeta)); color: var(--dona-5); }
+
+  /* Este mes: barras de lo que entró y salió, y lo que queda */
+  .tarjeta-mes { display: flex; flex-direction: column; gap: var(--e3); }
+  .tarjeta-mes .etiqueta-fila { margin-bottom: 0; }
+  .flujo { display: flex; flex-direction: column; gap: var(--e1b); }
+  .flujo-fila { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--t-lista); }
+  .flujo-fila > span:first-child { font-weight: 600; color: var(--texto-suave); flex: 1; }
+  .flujo-fila b { font-size: var(--t-cifra-chica); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .barra { height: 10px; border-radius: var(--radio-pildora); background: var(--suave); overflow: hidden; }
+  .barra-relleno { height: 100%; width: 0; border-radius: var(--radio-pildora); transition: width .4s ease; }
+  .barra-relleno.entra { background: var(--barra-entra); }
+  .barra-relleno.sale { background: var(--barra-sale); }
+  .te-quedan {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--e2);
+    padding: var(--e3) var(--e3b); border-radius: var(--radio-chip); background: var(--suave);
+  }
+  .te-quedan span { font-size: var(--t-lista); font-weight: 600; color: var(--texto-suave); }
+  .te-quedan b { font-size: var(--t-titulo); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tarjeta-mes .empezo b { color: var(--texto); font-variant-numeric: tabular-nums; }
+
+  /* ¿En qué se fue? La cifra del centro va CORTA ("1,28M"): el agujero de la
+     dona mide ~100px y un monto completo no cabe sin salirse. */
+  .dona-fila { display: flex; align-items: center; gap: var(--e4); }
+  .dona { position: relative; width: 132px; height: 132px; flex: none; }
+  .dona svg { width: 100%; height: 100%; display: block; }
+  .dona-centro {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+  }
+  .dona-centro span { font-size: var(--t-micro); font-weight: 700; color: var(--texto-suave); }
+  .dona-centro b { font-size: var(--t-cifra); font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dona-leyenda { flex: 1; min-width: 0; max-width: 340px; display: flex; flex-direction: column; gap: var(--e2); }
+  .dona-item {
+    display: flex; align-items: center; gap: var(--e2); width: 100%;
+    border: none; background: none; padding: 0; cursor: pointer; text-align: left;
+    font: inherit; font-size: var(--t-nota); color: var(--texto);
+  }
+  .dona-punto { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .dona-nombre { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dona-pct { font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
+  .aviso-presup {
+    display: flex; align-items: center; gap: var(--e2b); margin-top: var(--e3);
+    padding: var(--e3) var(--e3b); border-radius: var(--radio-chip);
+    background: var(--aviso-fondo); color: var(--ambar-texto);
+    font-size: var(--t-dato); font-weight: 600;
+  }
+  #ultimos-movs .dia-titulo:first-child { margin-top: 0; }
+  /* Dentro de la tarjeta los renglones van planos (sin tarjeta dentro de tarjeta) */
+  #ultimos-movs .mov {
+    background: none; border: none; box-shadow: none; border-radius: 0;
+    padding: var(--e2) 0; margin: 0; border-bottom: 1px solid var(--divisor);
+  }
+  #ultimos-movs .mov:last-child { border-bottom: none; }
   .grid-cuentas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pad-fila); margin-bottom: var(--e3); }
 
   /* =========================================== Vista: detalle de una cuenta */
@@ -167,7 +251,7 @@
     /* --- Menú lateral --- */
     .nav-inferior {
       top: 0; bottom: 0; right: auto; width: var(--ancho-nav);
-      flex-direction: column; justify-content: flex-start; gap: var(--e1);
+      display: flex; flex-direction: column; justify-content: flex-start; gap: var(--e1);
       padding: var(--pad-modal) var(--e3); border-top: none; border-right: 1px solid var(--borde-tarjeta);
       box-shadow: none;
     }
@@ -177,8 +261,9 @@
       padding: var(--e2) var(--e3) var(--e4b);
     }
     /* El FAB deja de flotar: pasa a ser el botón primario del sidebar, arriba */
+    .nav-inferior > * { order: 0; }
     .nav-registrar {
-      position: static; width: 100%; height: auto; border-radius: var(--radio-chip);
+      position: static; width: 100%; height: auto; border-radius: var(--radio-chip); margin-top: 0;
       min-height: var(--alto-toque); margin-bottom: var(--e4); padding: 0 var(--e3);
       justify-content: flex-start; gap: var(--e3); box-shadow: none;
     }
@@ -235,6 +320,7 @@
       align-items: stretch;
     }
     .panel-hero > .tarjeta { margin-bottom: var(--e3); min-width: 0; }
+    .panel-hero > .acciones-rapidas { grid-column: 1 / -1; order: 3; }
     /* Dentro del hero la tarjeta es media pantalla, así que los 4 datos van 2x2:
        en una sola fila, cifras como "$ 1.218.295,49" se parten en dos líneas. */
     .panel-hero .resumen-mes { grid-template-columns: repeat(2, 1fr); }

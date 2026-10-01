@@ -168,7 +168,7 @@ function pintarMovimientos(cont, lista, iconos) {
       sub += ' (' + fmtNativo(m.valorDestino, monedaDe(m.cuentaDestino)) + ')';
     }
     var clase = m.tipo === 'Ingreso' ? 'verde' : (m.tipo === 'Gasto' ? 'rojo' : '');
-    var signo = m.tipo === 'Ingreso' ? '+' : (m.tipo === 'Gasto' ? '−' : '');
+    var signo = m.tipo === 'Ingreso' ? '+ ' : (m.tipo === 'Gasto' ? '− ' : '');
 
     // Nodos con textContent, no innerHTML: una descripción con "<" o "&"
     // rompería el render (y aquí el texto lo escribe el usuario).

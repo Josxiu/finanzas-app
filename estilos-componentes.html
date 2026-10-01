@@ -312,32 +312,39 @@
 
   /* ------------------------------------------------------- Navegación
      Barra inferior en móvil; el bloque de escritorio la convierte en sidebar. */
+  /* Móvil: 5 casillas, el + de Registrar en la del centro y en relieve.
+     El orden visual sale de `order` (en el DOM, Registrar va primero para que
+     en el menú lateral de PC quede arriba). */
   .nav-inferior {
     position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
-    display: flex; justify-content: center; gap: 0;
+    display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: start;
+    max-width: 100%;
     background: var(--tarjeta); border-top: 1px solid var(--borde-tarjeta);
     box-shadow: var(--sombra-nav);
     padding-bottom: env(safe-area-inset-bottom);
   }
+  .nav-btn[data-vista="resumen"] { order: 1; }
+  .nav-btn[data-vista="historial"] { order: 2; }
+  .nav-registrar { order: 3; }
+  .nav-btn[data-vista="meses"] { order: 4; }
+  .nav-btn[data-vista="ajustes"] { order: 5; }
   .nav-btn {
-    flex: 1; max-width: 160px; min-height: var(--alto-nav); border: none; background: none;
+    min-width: 0; min-height: var(--alto-nav); border: none; background: none;
     color: var(--texto-suave); cursor: pointer;
     display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   }
-  .nav-btn span { font-size: var(--t-mini); font-weight: 600; }
+  .nav-btn span { font-size: var(--t-mini); font-weight: 700; white-space: nowrap; }
   .nav-btn.activa { color: var(--acento); }
   .nav-btn.activa .ic-nav { stroke-width: 2.2; }
   .marca { display: none; } /* solo en PC: el título vive en el sidebar */
 
-  /* Registrar: botón flotante (+) en móvil. Fijo (fuera del flujo de la barra),
-     por eso la barra de abajo solo reparte los 4 nav-btn. En PC pasa a ser un
+  /* Registrar: el + del centro de la barra, en relieve. En PC pasa a ser un
      botón del sidebar (ver estilos-vistas.html). */
   .nav-registrar {
-    position: fixed; right: var(--e4);
-    bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 25;
-    width: var(--alto-cta); height: var(--alto-cta); border-radius: 50%; border: none;
+    position: relative; justify-self: center; margin-top: -22px;
+    width: 58px; height: 58px; border-radius: 18px; border: none;
     background: var(--primario); color: var(--sobre-color); cursor: pointer;
-    box-shadow: var(--sombra-2);
+    box-shadow: var(--sombra-mas);
     display: inline-flex; align-items: center; justify-content: center;
   }
   .nav-registrar .ic-nav { width: 26px; height: 26px; stroke-width: 2.4; }
@@ -460,8 +467,8 @@
     font-size: var(--t-cuerpo); box-shadow: var(--sombra-2); max-width: 90vw; text-align: center;
     animation: subir .25s ease-out;
   }
-  .toast.error { background: var(--rojo); color: var(--sobre-color); }
-  .toast.exito { background: var(--verde); color: var(--sobre-color); }
+  .toast.error { background: var(--rojo); color: var(--toast-texto); }
+  .toast.exito { background: var(--verde); color: var(--toast-texto); }
   html[data-tema="oscuro"] .toast.error, html[data-tema="oscuro"] .toast.exito { color: #1D2129; }
   @keyframes subir { from { opacity: 0; transform: translate(-50%, var(--e4)); } }
 
