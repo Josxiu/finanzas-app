@@ -1,0 +1,743 @@
+<script>
+/* =====================================================================
+   Finanzas App — Vista Panel: patrimonio, tarjetas de cuenta, resumen del mes y gráficas.
+   ===================================================================== */
+
+// ============================================================ PANEL
+var ordenando = false;      // modo "ordenar tarjetas" activo
+var ordenTrabajo = null;    // { activos: [nombres], deudas: [nombres] } mientras se ordena
+var dragNombre = null;      // tarjeta que se está arrastrando (PC)
+
+/** Tarjeta de una cuenta o deuda. `lista` y `pos` solo importan al ordenar. */
+function tarjetaDeCuenta(c, lista, pos) {
+  var d = document.createElement('div');
+  d.className = 'tarjeta-cuenta' + (c.tipo === 'Deuda' ? ' deuda' : '');
+  d.style.setProperty('--color-cuenta', c.color);
+
+  var nombre = document.createElement('div');
+  nombre.className = 'nombre';
+  nombre.textContent = c.cuenta;           // textContent: el nombre viene de la hoja
+  var saldo = document.createElement('div');
+  d.appendChild(nombre);
+  d.appendChild(saldo);
+
+  if (c.tipo === 'Deuda') {
+    // Las deudas se muestran en positivo: "debes tanto"
+    if (c.saldo <= 0) {
+      saldo.className = 'saldo rojo';
+      saldo.textContent = fmtNativo(-c.saldo, c.moneda);
+      var mini = document.createElement('span');
+      mini.className = 'mini';
+      mini.textContent = 'debes';
+      d.insertBefore(mini, saldo);
+    } else {
+      saldo.className = 'saldo verde';
+      saldo.textContent = fmtNativo(c.saldo, c.moneda) + ' a favor';
+    }
+  } else {
+    saldo.className = 'saldo' + (c.saldo < 0 ? ' rojo' : '');
+    saldo.textContent = fmtNativo(c.saldo, c.moneda);
+  }
+
+  // Cuentas en otra moneda que la base: debajo va el equivalente en la base
+  if (c.moneda !== monedaBase) {
+    var eq = document.createElement('span');
+    eq.className = 'equiv';
+    eq.textContent = textoEquivalente(c, false);
+    d.appendChild(eq);
+  }
+
+  if (ordenando) {
+    // Flechas (funcionan en táctil y PC) + arrastre nativo en PC
+    var mover = function (delta) {
+      var nuevo = pos + delta;
+      if (nuevo < 0 || nuevo >= lista.length) return;
+      lista.splice(pos, 1);
+      lista.splice(nuevo, 0, c.cuenta);
+      renderResumen();
+    };
+    var izq = document.createElement('button');
+    izq.type = 'button'; izq.className = 'btn-orden'; izq.textContent = '◀';
+    izq.onclick = function (e) { e.stopPropagation(); mover(-1); };
+    var der = document.createElement('button');
+    der.type = 'button'; der.className = 'btn-orden der'; der.textContent = '▶';
+    der.onclick = function (e) { e.stopPropagation(); mover(1); };
+    d.appendChild(izq);
+    d.appendChild(der);
+
+    d.draggable = true;
+    d.ondragstart = function () { dragNombre = c.cuenta; };
+    d.ondragover = function (e) { e.preventDefault(); };
+    d.ondrop = function (e) {
+      e.preventDefault();
+      var desde = lista.indexOf(dragNombre);
+      if (desde < 0 || dragNombre === c.cuenta) return; // solo dentro de su sección
+      lista.splice(desde, 1);
+      lista.splice(pos, 0, dragNombre);
+      dragNombre = null;
+      renderResumen();
+    };
+  } else {
+    // Sparkline de los últimos 30 días (contexto de un vistazo, sin otro canvas)
+    var spark = miniSparkline(c.cuenta, c.color);
+    if (spark) {
+      var sw = document.createElement('div');
+      sw.className = 'spark-wrap';
+      sw.innerHTML = spark;
+      d.appendChild(sw);
+    }
+    d.title = (c.nota ? c.nota + ' — ' : '') + 'Toca para ver el detalle de la cuenta';
+    d.onclick = function () { abrirCuenta(c); };
+  }
+  return d;
+}
+
+/**
+ * Mini-gráfica SVG del saldo de una cuenta en los últimos 30 días.
+ * SVG en vez de otro canvas de Chart.js: pesa nada y no compite por memoria.
+ * Devuelve null si no hay suficiente historia (cuenta recién creada).
+ */
+function miniSparkline(nombre, color) {
+  var h = datos.historia || { porCuenta: {} };
+  var serie = (h.porCuenta[nombre] || []).slice(-30).filter(function (v) {
+    return v !== null && v !== undefined;
+  });
+  if (serie.length < 2) return null;
+  var min = Math.min.apply(null, serie), max = Math.max.apply(null, serie);
+  var rango = (max - min) || 1;
+  var w = 100, ht = 26;
+  var pts = serie.map(function (v, i) {
+    var x = serie.length > 1 ? (i / (serie.length - 1)) * w : 0;
+    var y = ht - ((v - min) / rango) * (ht - 4) - 2; // 2px de margen arriba y abajo
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  }).join(' ');
+  return '<svg class="spark" viewBox="0 0 ' + w + ' ' + ht + '" preserveAspectRatio="none" aria-hidden="true">' +
+    '<polyline points="' + pts + '" fill="none" stroke="' + color + '" stroke-width="1.5" ' +
+    'stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg>';
+}
+
+function renderResumen() {
+  // Patrimonio: cifra clave, lleva el código de la moneda base en gris
+  $('txt-patrimonio').innerHTML = fmtBase(datos.patrimonio, 'html');
+
+  // Desglose activos / deudas (consolidado, en la moneda base)
+  var totalActivos = 0, totalDeudas = 0;
+  datos.cuentas.forEach(function (c) {
+    if (c.tipo === 'Deuda') totalDeudas += -c.saldoCOP;
+    else totalActivos += c.saldoCOP;
+  });
+  $('txt-desglose').textContent =
+    'Cuentas ' + fmtBase(totalActivos) + '  ·  Deudas ' + fmtBase(totalDeudas);
+
+  // Tasas usadas: monedas foráneas (no la base ni COP) con cuentas. La tasa se
+  // expresa en la base: "1 USD = [base]".
+  var monedasUsadas = {};
+  datos.cuentas.forEach(function (c) {
+    if (c.moneda !== 'COP' && c.moneda !== monedaBase) monedasUsadas[c.moneda] = true;
+  });
+  var listaM = Object.keys(monedasUsadas);
+  var elTasas = $('txt-tasas');
+  elTasas.hidden = listaM.length === 0;
+  if (listaM.length) {
+    elTasas.textContent = listaM.map(function (m) {
+      var t = (datos.tasas || {})[m] || {};
+      // Sin tasa esas cuentas no suman al patrimonio: hay que decirlo, no
+      // mostrar un "= $ 0" que parece un saldo real.
+      if (t.sinTasa || !(t.tasa > 0)) return '⚠ sin tasa de ' + m;
+      return '1 ' + m + ' = ' + fmtNativo(t.tasa / tasaBase(), monedaBase) + (t.esManual ? ' (tasa manual)' : '');
+    }).join('  ·  ');
+  } else {
+    elTasas.textContent = '';
+  }
+
+  var porNombre = {};
+  datos.cuentas.forEach(function (c) { porNombre[c.cuenta] = c; });
+  var activos = cuentasActivas(), deudas = cuentasDeuda();
+
+  // Sin deudas la sección solo suma ruido: se oculta (se agregan desde Ajustes).
+  // En modo ordenar se muestra igual para poder reordenarlas.
+  $('seccion-deudas').hidden = (deudas.length === 0 && !ordenando);
+
+  // En modo ordenar se pinta según el orden de trabajo, no el de la hoja
+  var listaA = ordenando ? ordenTrabajo.activos : activos.map(function (c) { return c.cuenta; });
+  var listaD = ordenando ? ordenTrabajo.deudas : deudas.map(function (c) { return c.cuenta; });
+
+  var lc = $('lista-cuentas');
+  lc.innerHTML = '';
+  listaA.forEach(function (n, i) { lc.appendChild(tarjetaDeCuenta(porNombre[n], listaA, i)); });
+  var ld = $('lista-deudas');
+  ld.innerHTML = '';
+  listaD.forEach(function (n, i) { ld.appendChild(tarjetaDeCuenta(porNombre[n], listaD, i)); });
+
+  if (!ordenando) {
+    var masC = document.createElement('div');
+    masC.className = 'tarjeta-cuenta agregar';
+    masC.innerHTML = icono('mas', true) + 'Agregar cuenta';
+    masC.onclick = function () { abrirModalCuenta('Activo'); };
+    lc.appendChild(masC);
+
+    var masD = document.createElement('div');
+    masD.className = 'tarjeta-cuenta agregar';
+    masD.innerHTML = icono('mas', true) + (deudas.length ? 'Agregar deuda' : 'Registrar una deuda');
+    masD.onclick = function () { abrirModalCuenta('Deuda'); };
+    ld.appendChild(masD);
+  }
+  $('btn-ordenar').innerHTML = ordenando
+    ? icono('check') + 'Listo'
+    : icono('orden') + 'Ordenar';
+
+  var r = datos.resumen.mesActual;
+  $('titulo-mes').textContent = 'Este mes (' + nombreMes(r.mes) + ')';
+  $('txt-inicio-mes').textContent = fmtBase(datos.patrimonioInicioMes);
+  $('txt-ingresos').textContent = fmtBase(r.ingresos);
+  $('txt-gastos').textContent = fmtBase(r.gastos);
+  $('txt-neto').textContent = fmtBase(r.neto);
+  $('txt-neto').className = r.neto >= 0 ? 'verde' : 'rojo';
+
+  // Comparación contra el mes pasado (estilo Whisper), solo en ingresos y
+  // gastos: el neto se deduce de esos dos y su chip solo agregaba ruido.
+  // Las clases 'sube'/'baja' pintan rojo/verde: se elige por si el cambio es
+  // BUENO o malo, no por la dirección (ingresar más es verde, gastar más es rojo).
+  var meses = datos.resumen.meses;
+  var prev = meses.length > 1 ? meses[meses.length - 2] : null;
+  var mesPrevTxt = prev ? nombreMes(prev.mes).split(' ')[0] : '';
+
+  var chipG = $('chip-gastos-delta');
+  if (prev && prev.gastos > 0) {
+    var pctG = Math.round((r.gastos - prev.gastos) / prev.gastos * 100);
+    chipG.hidden = false;
+    chipG.textContent = (pctG >= 0 ? '↑' : '↓') + Math.abs(pctG) + '% vs ' + mesPrevTxt;
+    chipG.className = 'chip-delta ' + (pctG > 0 ? 'sube' : 'baja');
+  } else {
+    chipG.hidden = true;
+    chipG.textContent = ''; // que no reaparezca el chip del mes anterior
+  }
+
+  var chipI = $('chip-ingresos-delta');
+  if (prev && prev.ingresos > 0) {
+    var pctI = Math.round((r.ingresos - prev.ingresos) / prev.ingresos * 100);
+    chipI.hidden = false;
+    chipI.textContent = (pctI >= 0 ? '↑' : '↓') + Math.abs(pctI) + '% vs ' + mesPrevTxt;
+    chipI.className = 'chip-delta ' + (pctI >= 0 ? 'baja' : 'sube');
+  } else {
+    chipI.hidden = true;
+    chipI.textContent = '';
+  }
+
+  // Proyección: al ritmo de gasto que llevas, ¿en cuánto cierra el mes?
+  var diaHoy = Number(datos.hoy.substring(8, 10));
+  var proy = $('txt-proyeccion');
+  if (r.gastos > 0 && diaHoy > 0) {
+    var ritmo = r.gastos / diaHoy;
+    proy.hidden = false;
+    proy.textContent = 'A este ritmo gastarás ~' + fmtBase(Math.round(ritmo * diasDelMes(r.mes))) +
+      ' este mes (' + fmtBase(Math.round(ritmo)) + '/día)';
+  } else {
+    proy.hidden = true;
+  }
+
+  renderPresupuestos();
+  renderGraficas();
+}
+
+function alternarOrden() {
+  if (!ordenando) {
+    ordenando = true;
+    ordenTrabajo = {
+      activos: cuentasActivas().map(function (c) { return c.cuenta; }),
+      deudas: cuentasDeuda().map(function (c) { return c.cuenta; })
+    };
+    renderResumen();
+  } else {
+    var orden = ordenTrabajo.activos.concat(ordenTrabajo.deudas);
+    ordenando = false;
+    ordenTrabajo = null;
+    llamar('reordenarCuentas', [orden]);
+  }
+}
+
+function etiquetaRango() {
+  return rangoSel === 1 ? nombreMes(datos.resumen.mesActual.mes) : 'últimos ' + rangoSel + ' meses';
+}
+
+/* diasDelMes vive en app-core: la tabla de bisiestos estaba escrita dos veces
+   (aquí y en ultimoDiaMesAnteriorCli), que es una de esas duplicaciones que un
+   día se corrigen en un sitio y no en el otro. */
+
+// Dibuja el total en el centro de la dona: el hueco quedaba desaprovechado y
+// ahorra sumar de cabeza. Colores desde las variables CSS para que el tema aplique.
+var pluginCentroDona = {
+  id: 'centroDona',
+  afterDraw: function (chart) {
+    var total = 0;
+    chart.data.datasets[0].data.forEach(function (v) { total += v; });
+    var a = chart.chartArea;
+    var cx = (a.left + a.right) / 2, cy = (a.top + a.bottom) / 2;
+    var estilo = getComputedStyle(document.documentElement);
+    var ctx = chart.ctx;
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = estilo.getPropertyValue('--texto-suave').trim() || '#5F6368';
+    ctx.font = '600 11px system-ui, sans-serif';
+    ctx.fillText('TOTAL', cx, cy - 11);
+    ctx.fillStyle = estilo.getPropertyValue('--texto').trim() || '#202124';
+    ctx.font = '700 15px system-ui, sans-serif';
+    ctx.fillText(fmtBase(total), cx, cy + 7);
+    ctx.restore();
+  }
+};
+
+/** Salta al Historial ya filtrado por una categoría (clic en dona, lista o
+    presupuesto). `mes` explícito manda; si no, el del rango cuando es "Este mes". */
+function irACategoria(cat, mes) {
+  // Los demás filtros se limpian: la intención del clic es "ver ESTOS gastos"
+  $('fil-mes').value = mes || (rangoSel === 1 ? datos.hoy.substring(0, 7) : '');
+  $('fil-cuenta').value = '';
+  $('fil-tipo').value = '';
+  $('fil-categoria').value = cat;
+  $('fil-buscar').value = '';
+  renderHistorial();
+  irA('historial');
+}
+
+/** Marca los chips de rango de TODAS las vistas (Panel y Evolución comparten
+    `rangoSel`, así que las dos filas de chips tienen que reflejar lo mismo). */
+function marcarChipsRango() {
+  document.querySelectorAll('[data-rango]').forEach(function (b) {
+    marcarActivo(b, Number(b.dataset.rango) === rangoSel);
+  });
+}
+
+/** ¿Se puede dibujar? Sin el CDN de Chart.js hay que avisar, no dejar un hueco. */
+function hayChart() {
+  var sinChart = (typeof Chart === 'undefined');
+  $('graficas-error').hidden = !sinChart;
+  return !sinChart;
+}
+
+/* ------------------------------------------------ Firmas de las gráficas
+   Cada escritura termina con renderTodo(), que repintaba TODO: registrar un
+   gasto destruía y reconstruía hasta cinco instancias de Chart.js aunque sus
+   series fueran idénticas. Antes de dibujar se compara una "firma" (los valores
+   que la gráfica va a pintar) con la de la última vez; si coincide, se deja
+   como está. */
+var firmasGraficas = {};
+
+/**
+ * ¿Esta gráfica ya está dibujada con estos mismos datos?
+ * Guarda la firma nueva, así que llamarla dos veces seguidas da true la segunda.
+ */
+function mismaFirma(clave, firma) {
+  var igual = firmasGraficas[clave] === firma;
+  firmasGraficas[clave] = firma;
+  return igual;
+}
+
+/** Olvida las firmas: al cambiar de tema hay que redibujar aunque el dato sea el mismo. */
+function olvidarFirmas() { firmasGraficas = {}; }
+
+/**
+ * Gráficas del PANEL: solo la línea de patrimonio. Las de "en qué se va la
+ * plata" (dona y barras) viven en Evolución desde v11 — el Panel es el estado
+ * de hoy, no el análisis del tiempo.
+ */
+function renderGraficas() {
+  marcarChipsRango();
+  var ok = hayChart();
+  $('tarjeta-patrimonio-linea').style.display = ok ? '' : 'none';
+  if (ok) renderGraficaPatrimonio();
+}
+
+// ------------------------------------------------ Línea de patrimonio (reutilizable)
+var chartPatrimonio = null;
+
+/** Lee un color del tema como hex (para degradados). */
+function cssColor(nombre, fallback) {
+  var v = getComputedStyle(document.documentElement).getPropertyValue(nombre).trim();
+  return v || fallback;
+}
+
+/** Patrimonio consolidado en COP al cierre de cada día de `historia`. */
+function patrimonioCOPporDia() {
+  var h = datos.historia || { fechas: [], porCuenta: {} };
+  return h.fechas.map(function (f, i) {
+    var t = 0;
+    datos.cuentas.forEach(function (c) {
+      var v = (h.porCuenta[c.cuenta] || [])[i];
+      if (v !== null && v !== undefined) t += v * (c.tasa !== undefined ? c.tasa : 1);
+    });
+    return t;
+  });
+}
+
+/**
+ * Serie de patrimonio para un rango:
+ *  - rango 1 (Este mes): un punto por DÍA del mes en curso.
+ *  - 3/6/12: un punto por MES (el inicio de cada mes) + "Hoy".
+ * Todo consolidado en COP.
+ */
+function serieePatrimonio(rango) {
+  if (rango === 1) {
+    var mesHoy = datos.hoy.substring(0, 7);
+    var h = datos.historia || { fechas: [] };
+    var valoresDia = patrimonioCOPporDia();
+    var labels = [], vals = [], fechas = [];
+    h.fechas.forEach(function (f, i) {
+      if (f.substring(0, 7) === mesHoy) {
+        labels.push(Number(f.substring(8, 10)) + ' ' + MESES[Number(f.substring(5, 7)) - 1]);
+        vals.push(valoresDia[i]);
+        fechas.push(f);
+      }
+    });
+    return { labels: labels, valores: vals, fechas: fechas, esDiaria: true };
+  }
+  var meses = datos.resumen.meses.slice(-rango);
+  var labels = meses.map(function (m) { return nombreMes(m.mes); });
+  var vals = meses.map(function (m) { return m.inicio; });
+  var fechas = meses.map(function (m) { return m.mes + '-01'; });
+  labels.push('Hoy'); vals.push(datos.patrimonio); fechas.push(datos.hoy);
+  return { labels: labels, valores: vals, fechas: fechas, esDiaria: false };
+}
+
+/**
+ * Dibuja la línea de patrimonio en `canvasId` y devuelve la instancia Chart.
+ * Línea suave, degradado bajo la curva y tooltip "fecha · valor · Δ vs anterior".
+ * `vaciaId` (opcional): id del mensaje "sin datos" a mostrar/ocultar.
+ */
+function dibujarLineaPatrimonio(canvasId, rango, vaciaId) {
+  var s = serieePatrimonio(rango);
+  var canvas = $(canvasId);
+  var vacia = s.valores.length < 2;
+  if (vaciaId) $(vaciaId).hidden = !vacia;
+  canvas.parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return null;
+
+  var ctx = canvas.getContext('2d');
+  var alto = canvas.parentElement.clientHeight || 260;
+  var col = cssColor('--acento', '#1A73E8');
+  var grad = ctx.createLinearGradient(0, 0, 0, alto);
+  grad.addColorStop(0, hexA(col, 0.30));
+  grad.addColorStop(1, hexA(col, 0.02));
+
+  return new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels: s.labels,
+      datasets: [{
+        data: s.valores, borderColor: col, backgroundColor: grad, fill: true,
+        tension: 0.3, pointRadius: s.esDiaria ? 0 : 3, pointHitRadius: 14, borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: function (items) {
+            return s.esDiaria ? fechaBonita(s.fechas[items[0].dataIndex]) : s.labels[items[0].dataIndex];
+          },
+          label: function (x) { return ' ' + fmtBase(x.parsed.y); },
+          afterLabel: function (x) {
+            if (x.dataIndex === 0) return '';
+            var dif = x.parsed.y - x.dataset.data[x.dataIndex - 1];
+            if (Math.abs(dif) < 0.01) return '';
+            return (dif >= 0 ? ' ↑ +' : ' ↓ −') + montoATexto(Math.abs(dif)) + ' vs el punto anterior';
+          }
+        } }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        y: { ticks: { callback: function (v, i, ticks) { return etiquetaEjeBase(v, ticks); } } }
+      }
+    }
+  });
+}
+
+/** Etiqueta compacta de eje: 1.500.000 -> "1,5M", 44.000 -> "44k".
+    Hasta 2 decimales (los ceros se recortan solos): así un rango angosto no
+    pinta el mismo número repetido — p.ej. 7,02M / 7M / 6,98M en vez de "7M" x7. */
+function etiquetaCorta(v) {
+  var a = Math.abs(v);
+  if (a >= 1e6) return (v / 1e6).toLocaleString('es-CO', { maximumFractionDigits: 2 }) + 'M';
+  if (a >= 1e3) return (v / 1e3).toLocaleString('es-CO', { maximumFractionDigits: 2 }) + 'k';
+  return Math.round(v).toLocaleString('es-CO');
+}
+/** Igual, pero para valores CONSOLIDADOS (en COP): los pasa a la moneda base. */
+function etiquetaCortaBase(vCOP) { return etiquetaCorta(vCOP / tasaBase()); }
+
+/**
+ * Etiqueta de eje que mira el PASO entre marcas para decidir cuántos decimales
+ * necesita.
+ *
+ * Con decimales fijos, un eje de rango angosto sobre una cifra grande repetía la
+ * misma etiqueta: un patrimonio que se mueve 16 mil sobre 7 millones pintaba
+ * "6,98M" dos veces, "6,97M" cinco veces y "6,96M" otras dos. Aquí el paso entre
+ * marcas (16k/9 ≈ 1,8k = 0,0018M) pide 3 decimales y cada marca sale distinta.
+ */
+function etiquetaEje(v, ticks) {
+  var a = Math.abs(v);
+  var unidad = a >= 1e6 ? 1e6 : (a >= 1e3 ? 1e3 : 1);
+  var sufijo = unidad === 1e6 ? 'M' : (unidad === 1e3 ? 'k' : '');
+  // Paso entre dos marcas consecutivas, en la unidad que se va a mostrar
+  var paso = (ticks && ticks.length > 1)
+    ? Math.abs(ticks[1].value - ticks[0].value) / unidad
+    : 1;
+  var dec = paso >= 1 ? 0 : (paso >= 0.1 ? 1 : (paso >= 0.01 ? 2 : 3));
+  return (v / unidad).toLocaleString('es-CO', { maximumFractionDigits: dec }) + sufijo;
+}
+/** Igual, para valores consolidados en COP. */
+function etiquetaEjeBase(vCOP, ticks) {
+  var t = tasaBase();
+  var enBase = ticks ? ticks.map(function (x) { return { value: x.value / t }; }) : null;
+  return etiquetaEje(vCOP / t, enBase);
+}
+
+function renderGraficaPatrimonio() {
+  $('titulo-patrimonio-linea').textContent = 'Patrimonio ' +
+    (rangoSel === 1 ? '(este mes, día a día)' : '(' + etiquetaRango() + ')');
+  var s = serieePatrimonio(rangoSel);
+  // mismaFirma SIEMPRE se llama (aunque no haya gráfica): si se saltara con el
+  // && de la izquierda, la firma del primer dibujo no quedaría guardada y el
+  // siguiente render la reconstruiría igual.
+  var igualPat = mismaFirma('patrimonio', monedaBase + '|' + s.valores.join(','));
+  if (chartPatrimonio && igualPat) return;
+  if (chartPatrimonio) { chartPatrimonio.destroy(); chartPatrimonio = null; }
+  chartPatrimonio = dibujarLineaPatrimonio('chart-patrimonio', rangoSel);
+}
+
+// --- Gastos por categoría: dona o lista "top categorías", según vistaCats
+function renderGraficaCategorias() {
+  var meses = datos.resumen.meses.slice(-rangoSel);
+  var g = {};
+  meses.forEach(function (m) {
+    Object.keys(m.gastosPorCategoria).forEach(function (cat) {
+      g[cat] = (g[cat] || 0) + m.gastosPorCategoria[cat];
+    });
+  });
+  var etiquetas = Object.keys(g).sort(function (a, b) { return g[b] - g[a]; });
+  var total = 0;
+  etiquetas.forEach(function (e) { total += g[e]; });
+  var vacia = etiquetas.length === 0;
+
+  // Con una sola categoría la dona es un círculo entero sin información: en ese
+  // caso caemos a Lista (sin pisar la preferencia guardada del usuario).
+  var vista = (etiquetas.length === 1) ? 'lista' : vistaCats;
+
+  $('titulo-dona').textContent = 'Gastos por categoría (' + etiquetaRango() + ')';
+  $('dona-vacia').hidden = !vacia;
+  $('chart-dona').parentElement.style.display = (vista === 'dona' && !vacia) ? 'block' : 'none';
+  $('lista-cats').hidden = !(vista === 'lista' && !vacia);
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  // Firma: la vista elegida, la moneda y los pares categoría→monto
+  var firma = vista + '|' + monedaBase + '|' + etiquetas.map(function (e) {
+    return e + ':' + g[e];
+  }).join(',');
+  var yaEsta = mismaFirma('categorias', firma);
+  if (yaEsta && ((vista === 'dona' && chartDona) || (vista === 'lista' && !vacia))) return;
+
+  if (chartDona) { chartDona.destroy(); chartDona = null; }
+  if (vacia) return;
+
+  if (vista === 'lista') {
+    renderListaCats(etiquetas, g, total, iconos);
+    return;
+  }
+
+  chartDona = new Chart($('chart-dona'), {
+    type: 'doughnut',
+    data: {
+      labels: etiquetas.map(function (e) { return (iconos[e] || '') + ' ' + e; }),
+      datasets: [{
+        data: etiquetas.map(function (e) { return g[e]; }),
+        // Índice módulo N: con más categorías que colores se reciclan en orden
+        backgroundColor: etiquetas.map(function (e, i) { return PALETA[i % PALETA.length]; }),
+        // El borde entre porciones debe ser del color de la tarjeta (tema)
+        borderColor: getComputedStyle(document.documentElement).getPropertyValue('--tarjeta').trim() || '#fff',
+        borderWidth: 2
+      }]
+    },
+    plugins: [pluginCentroDona],
+    options: {
+      maintainAspectRatio: false,
+      // Tocar una porción lleva al Historial filtrado por esa categoría
+      onClick: function (evt, elems) {
+        if (elems && elems.length) irACategoria(etiquetas[elems[0].index]);
+      },
+      plugins: {
+        legend: { position: 'right', labels: { boxWidth: 14, font: { size: 12 } } },
+        tooltip: { callbacks: { label: function (ctx) {
+          var pct = total > 0 ? Math.round(ctx.parsed / total * 100) : 0;
+          return ' ' + fmtBase(ctx.parsed) + ' (' + pct + '%)';
+        } } }
+      }
+    }
+  });
+}
+
+/** Lista "top categorías": barra proporcional + monto + % (legible en celular). */
+function renderListaCats(etiquetas, g, total, iconos) {
+  var cont = $('lista-cats');
+  cont.innerHTML = '';
+  var max = g[etiquetas[0]]; // vienen ordenadas de mayor a menor
+  etiquetas.forEach(function (cat, i) {
+    var fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'fila-cat';
+    fila.title = 'Ver estos movimientos en el Historial';
+    fila.onclick = function () { irACategoria(cat); };
+
+    var info = document.createElement('div');
+    info.className = 'fila-cat-info';
+    var nombre = document.createElement('span');
+    nombre.textContent = (iconos[cat] || '🏷️') + ' ' + cat; // textContent: viene de la hoja
+    var monto = document.createElement('span');
+    monto.className = 'monto';
+    var pct = total > 0 ? Math.round(g[cat] / total * 100) : 0;
+    monto.textContent = fmtBase(g[cat]) + ' · ' + pct + '%';
+    info.appendChild(nombre);
+    info.appendChild(monto);
+
+    var barra = document.createElement('div');
+    barra.className = 'barra';
+    var relleno = document.createElement('div');
+    relleno.className = 'relleno';
+    relleno.style.width = (max > 0 ? (g[cat] / max * 100) : 0) + '%';
+    relleno.style.background = PALETA[i % PALETA.length]; // mismos colores que la dona
+    barra.appendChild(relleno);
+
+    fila.appendChild(info);
+    fila.appendChild(barra);
+    cont.appendChild(fila);
+  });
+}
+
+/** Ingresos y gastos por día del mes en curso, del 1 hasta hoy (en COP).
+    Cada valor se convierte con la tasa de SU cuenta: la vista "Por mes" viene
+    ya convertida del backend, así que sin esto alternar Mes/Día cambiaba los
+    totales de la misma gráfica (y un gasto de US$ 20 sumaba 20 pesos). */
+function datosDiariosMes() {
+  var mesHoy = datos.hoy.substring(0, 7);
+  var diaHoy = Number(datos.hoy.substring(8, 10));
+  var porDia = {};
+  datos.movimientos.forEach(function (m) {
+    if (m.fecha.substring(0, 7) !== mesHoy) return;
+    var d = Number(m.fecha.substring(8, 10));
+    if (!porDia[d]) porDia[d] = { ingresos: 0, gastos: 0 };
+    var tasa = tasaDe(m.cuenta);
+    if (m.tipo === 'Ingreso') porDia[d].ingresos += m.valor * tasa;
+    if (m.tipo === 'Gasto') porDia[d].gastos += m.valor * tasa;
+  });
+  var dias = [];
+  for (var d = 1; d <= diaHoy; d++) {
+    dias.push({
+      dia: d,
+      ingresos: porDia[d] ? porDia[d].ingresos : 0,
+      gastos: porDia[d] ? porDia[d].gastos : 0
+    });
+  }
+  return dias;
+}
+
+// --- Barras: I vs G o Neto según vistaBarras, por mes o por día según granBarras
+function renderGraficaBarras() {
+  // Colores desde el tema: en oscuro son menos saturados y contrastan mejor
+  var VERDE = cssColor('--verde', '#188038');
+  var ROJO = cssColor('--rojo', '#C5221F');
+
+  var labels, datasets, titulo;
+  var opciones = {
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { labels: { boxWidth: 14, font: { size: 12 } } },
+      tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+    },
+    scales: {
+      y: { ticks: { callback: function (v, i, ticks) { return etiquetaEjeBase(v, ticks); } } }
+    }
+  };
+
+  if (granBarras === 'dia') {
+    // Por día solo tiene sentido el mes en curso (los chips de rango siguen
+    // mandando sobre la gráfica de categorías, por eso no se esconden)
+    var dias = datosDiariosMes();
+    var mesTxt = nombreMes(datos.hoy.substring(0, 7));
+    labels = dias.map(function (d) { return d.dia; });
+    if (vistaBarras === 'neto') {
+      titulo = 'Neto por día (' + mesTxt + ')';
+      var netosD = dias.map(function (d) { return d.ingresos - d.gastos; });
+      datasets = [{
+        label: 'Neto', data: netosD, borderRadius: 4,
+        backgroundColor: netosD.map(function (v) { return v >= 0 ? VERDE : ROJO; })
+      }];
+      opciones.plugins.legend.display = false;
+    } else {
+      titulo = 'Ingresos vs gastos por día (' + mesTxt + ')';
+      datasets = [
+        { label: 'Ingresos', data: dias.map(function (d) { return d.ingresos; }), backgroundColor: VERDE, borderRadius: 4 },
+        { label: 'Gastos', data: dias.map(function (d) { return d.gastos; }), backgroundColor: ROJO, borderRadius: 4 }
+      ];
+    }
+  } else {
+    var meses = datos.resumen.meses.slice(-rangoSel);
+    labels = meses.map(function (m) { return nombreMes(m.mes); });
+    if (vistaBarras === 'neto') {
+      titulo = 'Neto por mes (' + etiquetaRango() + ')';
+      var netosM = meses.map(function (m) { return m.ingresos - m.gastos; });
+      datasets = [{
+        label: 'Neto', data: netosM, borderRadius: 6,
+        backgroundColor: netosM.map(function (v) { return v >= 0 ? VERDE : ROJO; })
+      }];
+      opciones.plugins.legend.display = false;
+    } else {
+      titulo = 'Ingresos vs gastos (' + etiquetaRango() + ')';
+      datasets = [
+        { label: 'Ingresos', data: meses.map(function (m) { return m.ingresos; }), backgroundColor: VERDE, borderRadius: 6 },
+        { label: 'Gastos', data: meses.map(function (m) { return m.gastos; }), backgroundColor: ROJO, borderRadius: 6 }
+      ];
+    }
+  }
+
+  $('titulo-barras').textContent = titulo;
+  // Firma: qué vista, qué granularidad, qué moneda y qué series
+  var firma = vistaBarras + '|' + granBarras + '|' + monedaBase + '|' + labels.join(',') + '|' +
+    datasets.map(function (d) { return d.data.join(','); }).join(';');
+  var igualBarras = mismaFirma('barras', firma);
+  if (chartBarras && igualBarras) return;
+
+  if (chartBarras) { chartBarras.destroy(); chartBarras = null; }
+  chartBarras = new Chart($('chart-barras'), {
+    type: 'bar',
+    data: { labels: labels, datasets: datasets },
+    options: opciones
+  });
+}
+
+/** Conecta los controles del Panel (ver conectarRegistrar en app-registrar). */
+function conectarPanel() {
+  $('btn-ordenar').onclick = alternarOrden;
+
+  // Presupuestos: desplegar/plegar el resto, y "Editar" lleva a la categoria,
+  // que es donde vive el tope desde v11.
+  $('presup-vertodos').onclick = function () {
+    presupExpandido = !presupExpandido;
+    renderPresupuestos();
+  };
+  $('btn-presup').onclick = function () { location.hash = '#ajustes/categorias'; };
+
+  // Rango de las graficas: los chips del Panel y los de Evolucion mueven la
+  // MISMA preferencia, asi que al cambiarlo se repintan las dos vistas.
+  document.querySelectorAll('[data-rango]').forEach(function (b) {
+    b.onclick = function () {
+      rangoSel = Number(b.dataset.rango);
+      localStorage.setItem('rangoGraficas', rangoSel);
+      renderGraficas();
+      renderEvolucion();
+    };
+  });
+}
+</script>

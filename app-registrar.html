@@ -1,0 +1,486 @@
+<script>
+/* =====================================================================
+   Finanzas App — Vista Registrar: tipos, chips de cuenta/categoría, selector visual de
+   transferencia y guardado.
+   ===================================================================== */
+
+// ============================================================ REGISTRAR
+var VERBO = { 'Gasto': 'gasto', 'Ingreso': 'ingreso', 'Transferencia': 'transferencia', 'Pago tarjeta': 'pago' };
+
+function elegirTipo(tipo) {
+  tipoSel = tipo;
+  document.querySelectorAll('.btn-tipo').forEach(function (b) {
+    marcarActivo(b, b.dataset.tipo === tipo);
+  });
+
+  // Soltar la categoría anterior si no encaja con el tipo nuevo: si no, un
+  // Gasto en "Comida" deja la transferencia siguiente marcada como Comida.
+  if (catSel && datos) {
+    var cat = datos.categorias.filter(function (c) { return c.categoria === catSel; })[0];
+    if (cat && cat.tipoSugerido && cat.tipoSugerido !== tipo) catSel = '';
+  }
+
+  var esDoble = (tipo === 'Transferencia' || tipo === 'Pago tarjeta');
+  // Gasto/Ingreso usan la tarjeta de una sola cuenta; transferencia/pago el
+  // selector visual Origen → Destino.
+  $('bloque-cuenta').hidden = esDoble;
+  $('bloque-transfer').hidden = !esDoble;
+  // Mover plata no es gastarla: transferencias y pagos van sin categoría
+  $('bloque-categoria').hidden = esDoble;
+  if (esDoble) transferLado = cuentaSel ? 'destino' : 'origen'; // arrancar por lo que falte
+  $('btn-guardar').textContent = 'Guardar ' + VERBO[tipo];
+  renderChipsRegistrar();
+}
+
+/** Cuentas que aplican como origen / destino según el tipo elegido. */
+function opcionesOrigen() {
+  // Gasto/Ingreso: cualquier cuenta (gastar con la tarjeta aumenta la deuda).
+  // Transferencia y Pagar deuda salen de una cuenta normal.
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+  return esDoble ? cuentasActivas() : datos.cuentas;
+}
+function opcionesDestino() {
+  return tipoSel === 'Pago tarjeta' ? cuentasDeuda() : cuentasActivas();
+}
+
+/**
+ * Chip de una cuenta: punto de su color + nombre + (si no es la moneda base)
+ * su código de moneda. La elegida lleva ✓ además del borde y el fondo.
+ */
+function chipCuenta(c, activa, onclick) {
+  var b = document.createElement('button');
+  b.type = 'button'; // dentro del <form>, si no sería un submit
+  b.className = 'chip';
+  b.style.setProperty('--color-cuenta', c.color);
+  b.title = c.cuenta + (c.nota ? ' — ' + c.nota : '');
+
+  var punto = document.createElement('span');
+  punto.className = 'punto';
+  b.appendChild(punto);
+  // textContent: el nombre de la cuenta viene de la hoja (editable a mano);
+  // nunca se concatena como HTML para evitar XSS almacenado.
+  var txt = document.createElement('span');
+  txt.className = 'txt';
+  txt.textContent = c.cuenta;
+  b.appendChild(txt);
+
+  // El código solo cuando aporta: si la cuenta está en la moneda base, sobra.
+  if (c.moneda && c.moneda !== monedaBase) {
+    var cod = document.createElement('span');
+    cod.className = 'cod';
+    cod.textContent = c.moneda;
+    b.appendChild(cod);
+  }
+  if (activa) {
+    var ok = document.createElement('span');
+    ok.className = 'ic-check';
+    ok.innerHTML = icono('check', true);
+    b.appendChild(ok);
+  }
+  marcarActivo(b, activa);
+  b.onclick = onclick;
+  return b;
+}
+
+/** Chip de una categoría: emoji + nombre, con ✓ si es la elegida. */
+function chipCategoria(c, activa, onclick) {
+  var b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'chip';
+  b.title = c.categoria;
+
+  var em = document.createElement('span');
+  em.textContent = c.icono || '🏷️';       // el emoji viene de la hoja
+  var txt = document.createElement('span');
+  txt.className = 'txt';
+  txt.textContent = c.categoria;
+  b.appendChild(em);
+  b.appendChild(txt);
+
+  if (activa) {
+    var ok = document.createElement('span');
+    ok.className = 'ic-check';
+    ok.innerHTML = icono('check', true);
+    b.appendChild(ok);
+  }
+  marcarActivo(b, activa);
+  b.onclick = onclick;
+  return b;
+}
+
+function renderChipsRegistrar() {
+  if (!datos) return;
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+
+  // Si la selección previa ya no aplica al tipo elegido, soltarla
+  var origenes = opcionesOrigen();
+  var destinos = opcionesDestino().filter(function (c) { return c.cuenta !== cuentaSel; });
+  if (cuentaSel && !origenes.some(function (c) { return c.cuenta === cuentaSel; })) cuentaSel = '';
+  if (destinoSel && !destinos.some(function (c) { return c.cuenta === destinoSel; })) destinoSel = '';
+
+  // Sin selección, arrancar con la última cuenta usada: un toque menos al día
+  if (!cuentaSel) {
+    var ultima = localStorage.getItem('ultimaCuenta');
+    if (ultima && origenes.some(function (c) { return c.cuenta === ultima; })) cuentaSel = ultima;
+  }
+
+  if (esDoble) {
+    renderTransfer(origenes, destinos);
+  } else {
+    // Gasto/Ingreso: una sola cuenta
+    var cont = $('chips-cuenta');
+    cont.innerHTML = '';
+    origenes.forEach(function (c) {
+      cont.appendChild(chipCuenta(c, c.cuenta === cuentaSel, function () {
+        cuentaSel = c.cuenta;
+        limpiarError('bloque-cuenta');
+        renderChipsRegistrar();
+      }));
+    });
+  }
+
+  renderCategorias();
+  actualizarBloqueValorDestino();
+}
+
+/* ------------------------------------------------------------- Categorías
+   Agrupadas por el tipo en el que se sugieren (Gastos / Ingresos / Otras), con
+   el grupo del tipo elegido primero. Antes iban en una sola tira ordenada por
+   ese criterio: se conserva la prioridad, pero ahora además se lee de un
+   vistazo a cuál pertenece cada una. */
+
+var GRUPOS_CAT = [
+  { tipo: 'Gasto', titulo: 'Gastos' },
+  { tipo: 'Ingreso', titulo: 'Ingresos' },
+  { tipo: '', titulo: 'Otras' }
+];
+/** A partir de cuántas categorías aparece el buscador (antes solo estorbaría). */
+var CATS_PARA_BUSCADOR = 12;
+
+/** Categorías ofrecibles: las no ocultas, más la elegida aunque esté oculta. */
+function categoriasOfrecidas() {
+  var ocultas = datos.catsOcultas || [];
+  return datos.categorias.filter(function (c) {
+    return ocultas.indexOf(c.categoria) < 0 || c.categoria === catSel;
+  });
+}
+
+function renderCategorias() {
+  var cc = $('chips-categoria');
+  cc.innerHTML = '';
+
+  var todas = categoriasOfrecidas();
+  // El buscador solo aparece cuando la lista es larga de verdad
+  var conBuscador = todas.length > CATS_PARA_BUSCADOR;
+  $('cat-buscar-wrap').hidden = !conBuscador;
+  if (!conBuscador) $('cat-buscar').value = '';
+
+  var filtro = normalizarTexto($('cat-buscar').value.trim());
+  var visibles = filtro
+    ? todas.filter(function (c) { return normalizarTexto(c.categoria).indexOf(filtro) >= 0; })
+    : todas;
+
+  // El grupo del tipo que se está registrando va primero
+  var grupos = GRUPOS_CAT.slice().sort(function (a, b) {
+    return (a.tipo === tipoSel ? 0 : 1) - (b.tipo === tipoSel ? 0 : 1);
+  });
+
+  var pintadas = 0;
+  var ultimaRejilla = null;
+  grupos.forEach(function (g) {
+    var delGrupo = visibles.filter(function (c) { return esDelGrupo(c, g.tipo); });
+    if (!delGrupo.length) return;
+    pintadas += delGrupo.length;
+
+    var caja = document.createElement('div');
+    caja.className = 'chips-grupo';
+    var tit = document.createElement('span');
+    tit.className = 'chips-grupo-tit';
+    tit.textContent = g.titulo;
+    var rejilla = document.createElement('div');
+    rejilla.className = 'chips chips-grilla densa';
+    delGrupo.forEach(function (c) {
+      rejilla.appendChild(chipCategoria(c, c.categoria === catSel, function () {
+        catSel = c.categoria;
+        limpiarError('bloque-categoria');
+        renderCategorias();
+      }));
+    });
+    caja.appendChild(tit);
+    caja.appendChild(rejilla);
+    cc.appendChild(caja);
+    ultimaRejilla = rejilla;
+  });
+
+  if (!pintadas) {
+    var vacio = document.createElement('div');
+    vacio.className = 'mensaje-vacio';
+    vacio.id = 'cat-vacio';
+    vacio.textContent = 'Ninguna categoría coincide con "' + $('cat-buscar').value.trim() + '"';
+    cc.appendChild(vacio);
+  }
+
+  // Chip final para gestionar categorías (lleva a Ajustes). Se cuela en la
+  // última rejilla en vez de estrenar fila propia: una fila entera para un solo
+  // chip costaba 60px de alto en una pantalla que ya iba justa.
+  var mas = document.createElement('button');
+  mas.type = 'button';
+  mas.className = 'chip chip-gestionar';
+  mas.title = 'Crear, editar u ocultar categorías';
+  mas.innerHTML = icono('ajustes', true) + '<span class="txt">Gestionar</span>';
+  mas.onclick = function () { irA('ajustes'); };
+  if (ultimaRejilla) {
+    ultimaRejilla.appendChild(mas);
+  } else {
+    var sola = document.createElement('div');
+    sola.className = 'chips chips-grilla densa';
+    sola.appendChild(mas);
+    cc.appendChild(sola);
+  }
+}
+
+/** ¿La categoría cae en este grupo? '' = el cajón de las que no sugieren tipo. */
+function esDelGrupo(c, tipo) {
+  if (tipo) return c.tipoSugerido === tipo;
+  return c.tipoSugerido !== 'Gasto' && c.tipoSugerido !== 'Ingreso';
+}
+
+/**
+ * Conecta los controles de Registrar. Cada módulo tiene su `conectarX()` y
+ * app-arranque solo los llama en orden: antes todo esto vivía en un
+ * DOMContentLoaded de 357 líneas que crecía con cada vista nueva.
+ */
+function conectarRegistrar() {
+  // Fecha de hoy por defecto (zona local del teléfono)
+  $('inp-fecha').value = Utilities_fmt(new Date());
+
+  document.querySelectorAll('.btn-tipo').forEach(function (b) {
+    b.onclick = function () { elegirTipo(b.dataset.tipo); };
+  });
+  elegirTipo('Gasto');
+
+  // El botón es type=submit dentro del <form>: así Enter en cualquier campo
+  // guarda, y el teclado del celular ofrece la tecla de acción. Un onclick
+  // suelto no daría ninguna de las dos cosas.
+  $('form-registrar').addEventListener('submit', function (e) {
+    e.preventDefault();
+    guardar();
+  });
+
+  // Buscador de categorías (solo visible cuando hay muchas). Enter elige la
+  // primera que coincide en vez de guardar el movimiento a medio llenar.
+  $('cat-buscar').addEventListener('input', renderCategorias);
+  $('cat-buscar').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    elegirPrimeraCategoria();
+  });
+
+  // Separadores de miles mientras se escribe, y limpiar el aviso de "falta esto"
+  $('inp-monto').addEventListener('input', function () {
+    formatearMontoEnVivo(this, false);
+    limpiarError('bloque-monto');
+  });
+  $('inp-valor-destino').addEventListener('input', function () {
+    formatearMontoEnVivo(this, false);
+    limpiarError('bloque-valor-destino');
+  });
+  $('inp-fecha').addEventListener('input', function () { limpiarError('bloque-fecha'); });
+
+  // Selector visual de transferencia (Origen → Destino con ⇄)
+  $('tr-origen').onclick = function () { transferLado = 'origen'; renderChipsRegistrar(); };
+  $('tr-destino').onclick = function () { transferLado = 'destino'; renderChipsRegistrar(); };
+  $('tr-swap').onclick = function () {
+    var t = cuentaSel; cuentaSel = destinoSel; destinoSel = t;
+    renderChipsRegistrar();
+  };
+}
+
+/** Enter en el buscador: elige la primera categoría que se ve y suelta el filtro. */
+function elegirPrimeraCategoria() {
+  // :not(.chip-gestionar) — si el filtro no encuentra nada, el único chip que
+  // queda es el de gestionar, y Enter no debe sacarte a Ajustes.
+  var primera = document.querySelector('#chips-categoria .chip:not(.chip-gestionar)');
+  if (!primera) return;
+  primera.click();
+  $('cat-buscar').value = '';
+  renderCategorias();
+}
+
+/**
+ * Selector visual de transferencia: dos tarjetas (Origen → Destino) con la
+ * cuenta elegida, y debajo los chips del lado que se está editando. El botón ⇄
+ * invierte (solo en transferencias entre cuentas; en Pagar deuda no aplica).
+ */
+function renderTransfer(origenes, destinos) {
+  var esPago = tipoSel === 'Pago tarjeta';
+  $('tr-origen-rol').textContent = 'Desde';
+  $('tr-destino-rol').textContent = esPago ? 'Deuda a pagar' : 'Hacia';
+
+  var co = cuentaPorNombre(cuentaSel);
+  $('tr-origen-punto').style.background = co ? co.color : 'transparent';
+  $('tr-origen-nombre').textContent = co ? co.cuenta : 'Elige';
+  var cdn = cuentaPorNombre(destinoSel);
+  $('tr-destino-punto').style.background = cdn ? cdn.color : 'transparent';
+  $('tr-destino-nombre').textContent = cdn ? cdn.cuenta : 'Elige';
+  $('tr-origen').classList.toggle('activa', transferLado === 'origen');
+  $('tr-destino').classList.toggle('activa', transferLado === 'destino');
+  $('tr-swap').style.visibility = esPago ? 'hidden' : 'visible';
+
+  // Chips del lado activo
+  var opciones = transferLado === 'destino' ? destinos : origenes;
+  var sel = transferLado === 'destino' ? destinoSel : cuentaSel;
+  $('tr-chips-lbl').textContent = transferLado === 'destino'
+    ? (esPago ? 'Elige la deuda a pagar' : 'Elige la cuenta que recibe')
+    : 'Elige la cuenta de origen';
+  var cont = $('chips-transfer');
+  cont.innerHTML = '';
+  opciones.forEach(function (c) {
+    cont.appendChild(chipCuenta(c, c.cuenta === sel, function () {
+      if (transferLado === 'destino') destinoSel = c.cuenta;
+      else { cuentaSel = c.cuenta; if (destinoSel === cuentaSel) destinoSel = ''; }
+      // Auto-avanzar al destino apenas se elige el origen (si falta)
+      if (transferLado === 'origen' && !destinoSel) transferLado = 'destino';
+      renderChipsRegistrar();
+    }));
+  });
+  $('destino-vacio').hidden = !(esPago && destinos.length === 0);
+
+  // Aviso de monedas distintas (el campo "llega al destino" lo pone actualizarBloqueValorDestino)
+  var tasaEl = $('tr-tasa');
+  if (cuentaSel && destinoSel && monedaDe(cuentaSel) !== monedaDe(destinoSel)) {
+    tasaEl.hidden = false;
+    tasaEl.textContent = 'Monedas distintas (' + monedaDe(cuentaSel) + ' → ' +
+      monedaDe(destinoSel) + '): abajo indica cuánto llega al destino.';
+  } else { tasaEl.hidden = true; tasaEl.textContent = ''; }
+}
+
+/** El campo "llega al destino" solo aparece entre cuentas de monedas distintas. */
+function actualizarBloqueValorDestino() {
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+  var distintas = esDoble && cuentaSel && destinoSel && monedaDe(cuentaSel) !== monedaDe(destinoSel);
+  $('bloque-valor-destino').hidden = !distintas;
+  if (distintas) {
+    var mDest = monedaDe(destinoSel);
+    $('lbl-valor-destino').textContent = 'Llega a ' + destinoSel + ' (' + mDest + ')';
+    $('vd-simbolo').textContent = mDest === 'USD' ? 'US$' : (mDest === 'EUR' ? '€' : '$');
+  }
+}
+
+function habilitarGuardar(v) { $('btn-guardar').disabled = !v; }
+
+/* ------------------------------------------------------------- Validación
+   El toast dice QUÉ falta; la clase .campo-error dice DÓNDE. Sin lo segundo,
+   en una pantalla larga hay que buscar el hueco a ojo. */
+
+/** Marca el bloque que falta, lo trae a la vista y avisa con el toast. */
+function faltaCampo(idBloque, mensaje, idFoco) {
+  limpiarErrores();
+  var el = $(idBloque);
+  if (el) {
+    el.classList.add('campo-error');
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+  if (idFoco && $(idFoco)) $(idFoco).setAttribute('aria-invalid', 'true');
+  toast(mensaje, 'error');
+  return false;
+}
+function limpiarError(idBloque) {
+  var el = $(idBloque);
+  if (el) el.classList.remove('campo-error');
+}
+function limpiarErrores() {
+  document.querySelectorAll('#vista-registrar .campo-error').forEach(function (e) {
+    e.classList.remove('campo-error');
+  });
+  document.querySelectorAll('#vista-registrar [aria-invalid]').forEach(function (e) {
+    e.removeAttribute('aria-invalid');
+  });
+}
+
+function guardar() {
+  var valor = parsearMonto($('inp-monto').value);
+  var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
+
+  // Validación amable antes de ir al servidor
+  if (!(valor > 0)) return faltaCampo('bloque-monto', 'Escribe un monto mayor que cero', 'inp-monto');
+  if (!cuentaSel) return faltaCampo(esDoble ? 'bloque-transfer' : 'bloque-cuenta', 'Elige la cuenta');
+  if (esDoble && !destinoSel) return faltaCampo('bloque-transfer', 'Elige la cuenta destino');
+  if (!esDoble && !catSel) return faltaCampo('bloque-categoria', 'Elige una categoría');
+  if (!$('inp-fecha').value) return faltaCampo('bloque-fecha', 'Elige la fecha', 'inp-fecha');
+
+  // Entre monedas distintas también se necesita cuánto llega al destino
+  var conValorDestino = !$('bloque-valor-destino').hidden;
+  var valorDestino = conValorDestino ? parsearMonto($('inp-valor-destino').value) : '';
+  if (conValorDestino && !(valorDestino > 0)) {
+    return faltaCampo('bloque-valor-destino',
+      'Escribe cuánto llega a ' + destinoSel + ' (' + monedaDe(destinoSel) + ')', 'inp-valor-destino');
+  }
+  limpiarErrores();
+
+  var mov = {
+    fecha: $('inp-fecha').value,
+    cuenta: cuentaSel,
+    tipo: tipoSel,
+    cuentaDestino: esDoble ? destinoSel : '',
+    categoria: esDoble ? '' : catSel, // mover plata no lleva categoría
+    descripcion: $('inp-desc').value.trim(),
+    valor: valor,
+    valorDestino: valorDestino,
+    // Identificador propio: si toca reintentar (señal mala), el servidor
+    // reconoce el que ya escribió y no duplica el movimiento.
+    uid: nuevoUid()
+  };
+
+  // Limpia el formulario y sale de Registrar: se usa igual si se guardó en el
+  // servidor o si quedó en la cola del teléfono.
+  var terminar = function () {
+    $('inp-monto').value = '';
+    $('inp-desc').value = '';
+    $('inp-valor-destino').value = '';
+    $('cat-buscar').value = '';   // el filtro no debe sobrevivir al guardado
+    limpiarErrores();
+    localStorage.setItem('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
+    cerrarRegistrar(); // Registrar es una subvista: volver a donde estabas
+  };
+
+  // Sin conexión ni se intenta: derecho a la cola, para no hacer esperar.
+  if (!hayRed()) {
+    encolarMovimiento(mov);
+    habilitarGuardar(true);
+    terminar();
+    toast('Sin conexión: guardado en el teléfono, se subirá solo', 'exito');
+    return;
+  }
+
+  // El botón queda bloqueado hasta que el servidor responda: Apps Script tarda
+  // 1-2 s y un segundo toque crearía una fila duplicada.
+  habilitarGuardar(false);
+  cargando(true);
+  google.script.run
+    .withSuccessHandler(function (resp) {
+      datos = resp;
+      guardarCacheDatos(resp);
+      cargando(false);
+      habilitarGuardar(true);
+      renderTodo();
+      toast(MENSAJES_OK.agregarMovimiento, 'exito');
+      terminar();
+    })
+    .withFailureHandler(function (err) {
+      cargando(false);
+      habilitarGuardar(true);
+      // Si se cayó la red a mitad, el movimiento no se pierde: va a la cola.
+      // Si el servidor lo RECHAZÓ (categoría inexistente, etc.), encolarlo solo
+      // repetiría el error: se muestra y el usuario conserva lo que escribió.
+      if (!hayRed()) {
+        encolarMovimiento(mov);
+        terminar();
+        toast('Se fue la conexión: guardado en el teléfono, se subirá solo', 'exito');
+      } else {
+        toast(err && err.message ? err.message : 'Error de conexión', 'error');
+      }
+    })
+    .agregarMovimiento(mov);
+}
+</script>

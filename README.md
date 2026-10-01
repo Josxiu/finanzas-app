@@ -9,11 +9,13 @@ app al refrescar, y viceversa. Cada quien la despliega contra su propia hoja
 
 | Archivo | Qué es |
 |---|---|
-| `Code.js` | Backend (en el editor de Apps Script se llama `Code.gs`) |
-| `index.html` | Estructura de la página |
-| `styles.html` | CSS (se inserta con `<?!= include('styles') ?>`) |
-| `app.html` | JavaScript del cliente |
+| `Code.js` | Backend: entrada de la web app, `include()` y `getDatos` |
+| `util-hoja.js`, `srv-*.js` | Resto del backend, por responsabilidad (datos, saldos, movimientos, cuentas, categorías, config) |
+| `index.html` | Estructura de la página; incluye los módulos con `<?!= include('…') ?>` |
+| `estilos-*.html` | CSS: tokens, base, componentes y vistas |
+| `app-*.html` | JavaScript del cliente, un módulo por vista (`app-core` y `app-arranque` primero y último) |
 | `appsscript.json` | Manifiesto: timezone Bogotá, web app "Solo yo" |
+| `.claspignore` | **Lista blanca** de lo que sube a Apps Script: un archivo nuevo debe agregarse ahí |
 | `desplegar.ps1` | Sube todo con clasp (login + create + push) |
 | `preview/generar_preview.js` | Genera una versión de prueba local (ver "Probar localmente") |
 

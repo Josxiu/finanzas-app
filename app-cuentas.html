@@ -1,0 +1,456 @@
+<script>
+/* =====================================================================
+   Finanzas App — Cuentas: cuadre de saldo, detalle de una cuenta y modal de cuenta nueva.
+   ===================================================================== */
+
+// ============================================================ AJUSTAR SALDO
+/* Cuadra una cuenta contra el saldo real del banco. El campo arranca con el
+   saldo que la app calcula: así el formato (y el signo, en la tarjeta) queda
+   claro y solo hay que corregir lo que sobre o falte. */
+function abrirAjuste(c) {
+  cuentaAjustando = c;
+  $('ajuste-titulo').textContent = 'Cuadrar ' + c.cuenta;
+  $('ajuste-calculado').textContent = fmtNativo(c.saldo, c.moneda);
+  $('aj-real').value = montoATexto(c.saldo);
+  // Deuda = la definida así en la hoja (SaldoInicial negativo), no una cuenta
+  // que quedó en rojo de paso: si no, el aviso saldría donde no toca.
+  $('ajuste-nota').textContent = (c.saldoInicial < 0
+    ? 'Es una deuda: el saldo va en negativo (−63.226 = debes 63.226).'
+    : 'Escribe el saldo que muestra el banco ahora mismo.') +
+    (c.moneda !== 'COP' ? ' Todo en ' + c.moneda + ', la moneda de la cuenta.' : '');
+  actualizarDifAjuste();
+  // Los campos van en la moneda de la cuenta: que el símbolo no mienta
+  $('aj-simbolo').textContent = simboloDe(c.moneda);
+  $('si-simbolo').textContent = simboloDe(c.moneda);
+
+  // Sección "Editar cuenta": siempre arranca plegada y con los valores actuales
+  $('si-bloque').hidden = true;
+  $('si-fecha').textContent = c.fechaCorte;
+  $('si-valor').value = montoATexto(c.saldoInicial);
+  $('ec-nombre').value = c.cuenta;
+  $('ec-nota').value = c.nota || '';
+  ecColorSel = c.color;
+  var pintarPaletaEc = function () {
+    renderPaletaEn('ec-paleta', ecColorSel, function (col) { ecColorSel = col; pintarPaletaEc(); });
+  };
+  pintarPaletaEc();
+  ecMonedaSel = c.moneda || 'COP';
+  pintarMonedasEc();
+  // Eliminar solo se ofrece si NINGÚN movimiento usa la cuenta (el servidor revalida)
+  $('si-eliminar').hidden = c.enUso !== false;
+
+  $('modal-ajuste').hidden = false;
+}
+
+function eliminarCuentaActual() {
+  var c = cuentaAjustando;
+  confirmar('Se eliminará "' + c.cuenta + '". No tiene movimientos, así que no se pierde nada más.',
+    { titulo: 'Eliminar cuenta', aceptar: 'Eliminar', peligro: true }, function (si) {
+      if (!si) return;
+      cerrarAjuste();
+      llamar('eliminarCuenta', [c.cuenta]);
+    });
+}
+function cerrarAjuste() { $('modal-ajuste').hidden = true; cuentaAjustando = null; }
+
+function guardarSaldoInicial() {
+  var c = cuentaAjustando; // capturar antes de cerrar
+  var valor = parsearMonto($('si-valor').value);
+  if (isNaN(valor)) return toast('Escribe el saldo inicial', 'error');
+  var nombre = $('ec-nombre').value.trim();
+  if (!nombre) return toast('El nombre no puede quedar vacío', 'error');
+
+  var cambios = {
+    nombre: nombre,
+    saldoInicial: valor,
+    color: ecColorSel,
+    nota: $('ec-nota').value.trim(),
+    moneda: ecMonedaSel
+  };
+  var igual = nombre === c.cuenta && valor === c.saldoInicial &&
+              ecColorSel === c.color && cambios.nota === (c.nota || '') &&
+              ecMonedaSel === (c.moneda || 'COP');
+  if (igual) { cerrarAjuste(); return; }
+
+  var partes = [];
+  if (valor !== c.saldoInicial) {
+    // El valor viejo va en la moneda VIEJA y el nuevo en la nueva: si no, al
+    // pasar de COP a USD el mensaje decía "US$ 500.000 → US$ 600.000".
+    partes.push('Saldo inicial: ' + fmtNativo(c.saldoInicial, c.moneda) + ' → ' +
+      fmtNativo(valor, ecMonedaSel) + ' (el saldo actual se recalcula)');
+  }
+  if (nombre !== c.cuenta) partes.push('Nombre → "' + nombre + '" (se actualiza en todo el historial)');
+  if (ecMonedaSel !== (c.moneda || 'COP')) {
+    partes.push('Moneda → ' + ecMonedaSel + ' (los números guardados NO se convierten: solo cambia en qué moneda se leen)');
+  }
+
+  var aplicar = function () {
+    cerrarAjuste();
+    llamar('editarCuenta', [c.cuenta, cambios]);
+  };
+  // Solo se pregunta si hay algo con consecuencias (saldo, nombre o moneda);
+  // cambiar color o nota se guarda directo.
+  if (partes.length) {
+    confirmar('· ' + partes.join('\n· '), { titulo: 'Guardar cambios de ' + c.cuenta, aceptar: 'Guardar' },
+      function (si) { if (si) aplicar(); });
+  } else {
+    aplicar();
+  }
+}
+
+/** Muestra en vivo el movimiento que se va a crear, antes de confirmar. */
+function actualizarDifAjuste() {
+  if (!cuentaAjustando) return;
+  var real = parsearMonto($('aj-real').value);
+  var elDif = $('ajuste-dif'), elExplica = $('ajuste-explica');
+
+  if (isNaN(real)) {
+    elDif.textContent = '—';
+    elDif.className = '';
+    elExplica.textContent = '';
+    $('aj-guardar').disabled = true;
+    return;
+  }
+  var dif = real - cuentaAjustando.saldo;
+  if (Math.abs(dif) < 0.01) dif = 0; // si no, los flotantes pintan un feo "$ -0"
+
+  var mon = cuentaAjustando.moneda;
+  $('aj-guardar').disabled = false;
+  elDif.textContent = (dif > 0 ? '+' : '') + fmtNativo(dif, mon);
+  elDif.className = dif === 0 ? '' : (dif > 0 ? 'verde' : 'rojo');
+
+  if (dif === 0) {
+    elExplica.textContent = '✔ La cuenta ya está cuadrada, no se creará ningún movimiento.';
+  } else {
+    elExplica.textContent = 'Se creará un ' + (dif > 0 ? 'Ingreso' : 'Gasto') + ' de ' +
+      fmtNativo(Math.abs(dif), mon) + ' con categoría Ajuste, con fecha de hoy.';
+  }
+}
+
+function guardarAjuste() {
+  var real = parsearMonto($('aj-real').value);
+  if (isNaN(real)) return toast('Escribe el saldo real', 'error');
+  var cuenta = cuentaAjustando.cuenta; // capturar antes de cerrar
+  cerrarAjuste();
+  llamar('ajustarSaldo', [cuenta, real]);
+}
+
+// ============================================================ DETALLE DE CUENTA
+var cuentaDetalle = null; // nombre de la cuenta abierta en la subvista
+var chartCuenta = null;
+var rangoCuenta = Number(localStorage.getItem('rangoCuenta')) || 3;
+if ([1, 3, 6, 12].indexOf(rangoCuenta) < 0) rangoCuenta = 3;
+
+/** Abrir es solo poner el hash: así el botón atrás del navegador cierra la vista. */
+function abrirCuenta(c) {
+  location.hash = '#cuenta/' + encodeURIComponent(c.cuenta);
+}
+
+/**
+ * Sincroniza la vista con el hash. Tres formas:
+ *   #cuenta/Nombre     subvista de detalle de cuenta
+ *   #registrar         subvista de Registrar
+ *   #ajustes/grupo     un grupo concreto de Ajustes (índice → detalle)
+ */
+function manejarHash() {
+  if (!datos) return;
+  var h = decodeURIComponent(location.hash || '');
+  if (h.indexOf('#cuenta/') === 0) {
+    var nombre = h.substring(8);
+    if (datos.cuentas.some(function (c) { return c.cuenta === nombre; })) {
+      cuentaDetalle = nombre;
+      irA('cuenta');
+      return;
+    }
+  }
+  if (h === '#registrar') { irA('registrar'); return; }
+  if (h.indexOf('#ajustes') === 0) {
+    var grupo = h.indexOf('/') > 0 ? h.substring(h.indexOf('/') + 1) : null;
+    if (vistaActual !== 'ajustes') irA('ajustes');
+    mostrarGrupoAjustes(grupo);
+    return;
+  }
+  // Hash vacío o inválido: si estábamos en una subvista, volver a la base
+  if (vistaActual === 'cuenta' || vistaActual === 'registrar') {
+    cuentaDetalle = null;
+    irA(vistaBase);
+    return;
+  }
+  // Atrás desde un grupo de Ajustes: volver al índice (en móvil se nota;
+  // en PC el índice ya se ve y mostrarGrupoAjustes deja abierto el primero).
+  if (vistaActual === 'ajustes') mostrarGrupoAjustes(null);
+}
+
+function renderCuentaDetalle() {
+  var c = cuentaPorNombre(cuentaDetalle);
+  if (!c) { cuentaDetalle = null; irA('resumen'); return; }
+  $('titulo-vista').textContent = c.cuenta;
+
+  $('cd-hero').style.setProperty('--color-cuenta', c.color);
+  var esDeuda = c.tipo === 'Deuda';
+  $('cd-tipo').textContent = (esDeuda ? 'Deuda — debes' : 'Saldo') +
+    (c.moneda !== monedaBase ? ' (' + c.moneda + ')' : '');
+  var saldoMostrar = (esDeuda && c.saldo <= 0) ? -c.saldo : c.saldo;
+  // Hero: cifra clave, con el código de moneda en gris
+  $('cd-saldo').innerHTML = fmtNativo(saldoMostrar, c.moneda, 'html');
+  $('cd-saldo').className = 'valor-grande ' + ((esDeuda && c.saldo <= 0) || c.saldo < 0 ? 'rojo' : '');
+
+  var eq = $('cd-equiv');
+  if (c.moneda !== monedaBase) {
+    eq.hidden = false;
+    eq.textContent = textoEquivalente(c, true);
+  } else {
+    // Limpiar además de ocultar: si no, al volver de una cuenta en dólares
+    // el texto viejo quedaba ahí (y con .mini{display:block} llegaba a verse)
+    eq.hidden = true;
+    eq.textContent = '';
+  }
+  $('cd-nota').textContent = c.nota || '';
+
+  document.querySelectorAll('#cd-rangos .chip').forEach(function (b) {
+    b.classList.toggle('activa', Number(b.dataset.cdrango) === rangoCuenta);
+  });
+
+  renderGraficaCuenta(c);
+
+  // Ingresos y gastos del mes en curso de ESTA cuenta (en su moneda)
+  var mesHoy = datos.hoy.substring(0, 7);
+  var ing = 0, gas = 0;
+  datos.movimientos.forEach(function (m) {
+    if (m.fecha.substring(0, 7) !== mesHoy || m.cuenta !== c.cuenta) return;
+    if (m.tipo === 'Ingreso') ing += m.valor;
+    if (m.tipo === 'Gasto') gas += m.valor;
+  });
+  $('cd-titulo-mes').textContent = 'Este mes en ' + c.cuenta;
+  $('cd-ingresos').textContent = fmtNativo(ing, c.moneda);
+  $('cd-gastos').textContent = fmtNativo(gas, c.moneda);
+
+  // Últimos movimientos que tocan la cuenta (editar = tocar la fila, como siempre)
+  var iconos = {};
+  datos.categorias.forEach(function (x) { iconos[x.categoria] = x.icono; });
+  var lista = datos.movimientos.filter(function (m) {
+    return m.cuenta === c.cuenta || m.cuentaDestino === c.cuenta;
+  }).slice(0, 15);
+  var cont = $('cd-movs');
+  cont.innerHTML = '';
+  if (!lista.length) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('historial') +
+      'Sin movimientos todavía</div>';
+  } else {
+    pintarMovimientos(cont, lista, iconos);
+  }
+}
+
+/** Línea del saldo día a día de la cuenta, con degradado de su color. */
+function renderGraficaCuenta(c) {
+  if (chartCuenta) { chartCuenta.destroy(); chartCuenta = null; }
+  if (typeof Chart === 'undefined') return;
+
+  var h = datos.historia || { fechas: [], porCuenta: {} };
+  var n = { 1: 30, 3: 90, 6: 180, 12: 365 }[rangoCuenta] || 90;
+  var fechas = h.fechas.slice(-n);
+  var valores = (h.porCuenta[c.cuenta] || []).slice(-n);
+  // Los null del principio son días anteriores al corte de la cuenta: fuera
+  var ini = 0;
+  while (ini < valores.length && valores[ini] === null) ini++;
+  fechas = fechas.slice(ini);
+  valores = valores.slice(ini);
+
+  var vacia = valores.length < 2;
+  $('cd-graf-vacia').hidden = !vacia;
+  $('chart-cuenta').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+  $('cd-titulo-graf').textContent = 'Saldo día a día (' +
+    (rangoCuenta === 1 ? 'último mes' : 'últimos ' + rangoCuenta + ' meses') + ')';
+
+  var ctx = $('chart-cuenta').getContext('2d');
+  var alto = $('chart-cuenta').parentElement.clientHeight || 220;
+  var grad = ctx.createLinearGradient(0, 0, 0, alto);
+  grad.addColorStop(0, hexA(c.color, 0.35));
+  grad.addColorStop(1, hexA(c.color, 0.02));
+
+  var etiquetas = fechas.map(function (f) {
+    return Number(f.substring(8, 10)) + ' ' + MESES[Number(f.substring(5, 7)) - 1];
+  });
+  chartCuenta = new Chart($('chart-cuenta'), {
+    type: 'line',
+    data: {
+      labels: etiquetas,
+      datasets: [{
+        data: valores,
+        borderColor: c.color, backgroundColor: grad, fill: true,
+        tension: 0.3, pointRadius: 0, pointHitRadius: 14, borderWidth: 2
+      }]
+    },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: function (items) { return fechaBonita(fechas[items[0].dataIndex]); },
+          label: function (x) { return ' ' + fmtNativo(x.parsed.y, c.moneda); },
+          afterLabel: function (x) {
+            if (x.dataIndex === 0) return '';
+            var dif = x.parsed.y - x.dataset.data[x.dataIndex - 1];
+            if (Math.abs(dif) < 0.01) return '';
+            return (dif >= 0 ? ' ↑ +' : ' ↓ −') + montoATexto(Math.abs(dif)) + ' vs el día anterior';
+          }
+        } }
+      },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, maxRotation: 0 } },
+        // etiquetaCorta, como el resto de la app: con el /1000+'k' a mano una
+        // cuenta de $500 mostraba "0,5k" y una de millones repetía el mismo número.
+        y: { ticks: { callback: function (v, i, ticks) { return etiquetaEje(v, ticks); } } }
+      }
+    }
+  });
+}
+
+// ============================================================ CUENTA NUEVA
+var ncTipoSel = 'Activo'; // tipo elegido en el modal de cuenta nueva
+
+/** Pinta una paleta de swatches en cualquier contenedor. */
+function renderPaletaEn(contId, seleccionado, alElegir) {
+  var cont = $(contId);
+  cont.innerHTML = '';
+  PALETA.forEach(function (color) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'swatch' + (color === seleccionado ? ' activa' : '');
+    b.style.background = color;
+    b.onclick = function () { alElegir(color); };
+    cont.appendChild(b);
+  });
+}
+function renderPaleta() {
+  renderPaletaEn('nc-paleta', colorSel, function (c) { colorSel = c; renderPaleta(); });
+}
+
+/** Chips de moneda (12) en un contenedor; al elegir llama a onPick(moneda). */
+function renderMonedasEn(contId, sel, onPick) {
+  var cont = $(contId);
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (m === sel ? ' activa' : '');
+    b.textContent = m + ' ' + simboloDe(m);
+    b.onclick = function () { onPick(m); };
+    cont.appendChild(b);
+  });
+}
+/** Chips de moneda del modal de cuenta nueva (se re-pinta al elegir). */
+function pintarMonedasNc() {
+  renderMonedasEn('nc-monedas', ncMonedaSel, function (m) {
+    ncMonedaSel = m; $('nc-simbolo').textContent = simboloDe(m); pintarMonedasNc();
+  });
+}
+/** Chips de moneda del editor de cuenta (dentro del modal de conciliar). */
+function pintarMonedasEc() {
+  renderMonedasEn('ec-monedas', ecMonedaSel, function (m) {
+    ecMonedaSel = m; $('si-simbolo').textContent = simboloDe(m); pintarMonedasEc();
+  });
+}
+
+function abrirModalCuenta(tipoInicial) {
+  ncTipoSel = tipoInicial === 'Deuda' ? 'Deuda' : 'Activo';
+  $('nc-nombre').value = '';
+  $('nc-saldo').value = '';
+  $('nc-nota').value = '';
+  colorSel = ncTipoSel === 'Deuda' ? '#C5221F' : PALETA[0];
+  ncMonedaSel = 'COP';
+  renderPaleta();
+  pintarMonedasNc();
+  $('nc-simbolo').textContent = simboloDe(ncMonedaSel);
+  pintarTipoCuentaNueva();
+  $('modal-cuenta').hidden = false;
+  $('nc-nombre').focus();
+}
+function cerrarModalCuenta() { $('modal-cuenta').hidden = true; }
+
+function pintarTipoCuentaNueva() {
+  document.querySelectorAll('#nc-tipos .chip').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.nctipo === ncTipoSel);
+  });
+  var esDeuda = ncTipoSel === 'Deuda';
+  $('nc-titulo').textContent = esDeuda ? 'Nueva deuda' : 'Nueva cuenta';
+  $('nc-lbl-saldo').textContent = esDeuda ? 'Cuánto debes hoy' : 'Saldo actual';
+  $('nc-ayuda').textContent = esDeuda
+    ? 'Una tarjeta de crédito, un préstamo... Escribe cuánto debes (en positivo) y la app la lleva como deuda: los pagos la van bajando hacia cero.'
+    : 'La cuenta arranca hoy con el saldo que escribas.';
+  $('nc-nombre').placeholder = esDeuda ? 'Ej: Tarjeta Rappi, Préstamo mamá' : 'Ej: Daviplata';
+}
+
+function guardarCuenta() {
+  var nombre = $('nc-nombre').value.trim();
+  var saldo = parsearMonto($('nc-saldo').value);
+  if (!nombre) return toast('Escribe el nombre', 'error');
+  if (isNaN(saldo)) return toast('Escribe el saldo (0 si está en ceros)', 'error');
+  cerrarModalCuenta();
+  llamar('agregarCuenta', [{
+    cuenta: nombre,
+    saldoInicial: saldo, // si es deuda, el servidor lo guarda en negativo
+    color: colorSel,
+    nota: $('nc-nota').value.trim(),
+    tipo: ncTipoSel,
+    moneda: ncMonedaSel
+  }]);
+}
+
+/** Conecta el cuadre de saldo, el detalle de cuenta y el modal de cuenta nueva. */
+function conectarCuentas() {
+  // Modal de cuadre
+  $('aj-guardar').onclick = guardarAjuste;
+  $('aj-cancelar').onclick = cerrarAjuste;
+  $('modal-ajuste').onclick = function (e) { if (e.target === this) cerrarAjuste(); };
+  $('aj-real').addEventListener('input', function () {
+    formatearMontoEnVivo(this, true);
+    actualizarDifAjuste();
+  });
+
+  // Saldo inicial y edicion de la cuenta (seccion plegada del mismo modal)
+  $('si-toggle').onclick = function () { $('si-bloque').hidden = !$('si-bloque').hidden; };
+  $('si-valor').addEventListener('input', function () { formatearMontoEnVivo(this, true); });
+  $('si-guardar').onclick = guardarSaldoInicial;
+  $('si-eliminar').onclick = eliminarCuentaActual;
+
+  // Modal de cuenta nueva
+  $('nc-cancelar').onclick = cerrarModalCuenta;
+  $('modal-cuenta').onclick = function (e) { if (e.target === this) cerrarModalCuenta(); };
+  $('nc-saldo').addEventListener('input', function () { formatearMontoEnVivo(this, true); });
+  $('nc-guardar').onclick = guardarCuenta;
+  document.querySelectorAll('#nc-tipos .chip').forEach(function (b) {
+    b.onclick = function () { ncTipoSel = b.dataset.nctipo; pintarTipoCuentaNueva(); };
+  });
+
+  // Subvista de detalle de una cuenta
+  $('cd-volver').onclick = function () { history.back(); };
+  $('cd-registrar').onclick = function () {
+    abrirRegistrar(cuentaDetalle); // preselecciona esta cuenta como origen
+  };
+  $('cd-conciliar').onclick = function () {
+    var c = cuentaPorNombre(cuentaDetalle);
+    if (c) abrirAjuste(c);
+  };
+  $('cd-editar').onclick = function () {
+    var c = cuentaPorNombre(cuentaDetalle);
+    if (c) { abrirAjuste(c); $('si-bloque').hidden = false; }
+  };
+  $('cd-ver-todo').onclick = function () {
+    var n = cuentaDetalle;
+    limpiarFiltros();
+    $('fil-cuenta').value = n;
+    renderHistorial();
+    irA('historial');
+  };
+  document.querySelectorAll('#cd-rangos .chip').forEach(function (b) {
+    b.onclick = function () {
+      rangoCuenta = Number(b.dataset.cdrango);
+      localStorage.setItem('rangoCuenta', rangoCuenta);
+      renderCuentaDetalle();
+    };
+  });
+}
+</script>

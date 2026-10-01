@@ -1,0 +1,625 @@
+<script>
+/* =====================================================================
+   Finanzas App — Estado global, formato de dinero, utilidades, toast, llamada al servidor
+   y render general. Lo cargan todos los demás módulos.
+   ===================================================================== */
+
+/* =====================================================================
+   Finanzas App — Lógica del cliente
+   Todo el estado vive en `datos` (lo que devuelve getDatos del servidor).
+   ===================================================================== */
+
+var datos = null;          // última respuesta del servidor
+var tipoSel = 'Gasto';     // tipo elegido en Registrar
+var cuentaSel = '';        // cuenta origen elegida
+var destinoSel = '';       // cuenta destino elegida
+var transferLado = 'origen'; // qué tarjeta del selector de transferencia se está eligiendo
+var catSel = '';           // categoría elegida
+var presupExpandido = false; // Panel: ¿se ven TODOS los presupuestos o solo el top 3?
+var movEditando = null;    // movimiento abierto en el modal
+var cuentaAjustando = null; // cuenta abierta en el modal de ajuste
+var mesAbierto = null;      // mes abierto en el modal de detalle
+var ajusteMesCuenta = null; // cuenta elegida para ajustar dentro de ese mes
+var ajusteMesModo = 'mov';  // 'mov' = movimiento de ajuste | 'si' = editar saldo inicial
+var colorSel = '#1A73E8';   // color elegido en el modal de cuenta nueva
+var ecColorSel = '#1A73E8'; // color elegido al editar una cuenta existente
+var ncMonedaSel = 'COP';    // moneda elegida en el modal de cuenta nueva
+var ecMonedaSel = 'COP';    // moneda elegida al editar una cuenta existente
+var chartDona = null, chartBarras = null;
+/* Rango de las gráficas en meses (1 = solo el mes actual); se recuerda entre
+   sesiones. Es UNO SOLO para toda la app: manda sobre la línea de patrimonio del
+   Panel y sobre las gráficas de Evolución. Hasta v10 había un `rangoEvol` aparte
+   porque la línea de patrimonio estaba duplicada en las dos vistas. */
+var rangoSel = Number(localStorage.getItem('rangoGraficas')) || 6;
+if ([1, 3, 6, 12].indexOf(rangoSel) < 0) rangoSel = 6;
+
+// Vistas de las gráficas del Panel (estilo Whisper Money); también se recuerdan
+var vistaBarras = localStorage.getItem('vistaBarras') || 'ivg';  // 'ivg' | 'neto'
+if (['ivg', 'neto'].indexOf(vistaBarras) < 0) vistaBarras = 'ivg'; // migra el viejo 'pct'
+var granBarras = localStorage.getItem('granBarras') || 'mes';    // 'mes' | 'dia'
+if (['mes', 'dia'].indexOf(granBarras) < 0) granBarras = 'mes';
+var vistaCats = localStorage.getItem('vistaCats') || 'dona';     // 'dona' | 'lista'
+if (['dona', 'lista'].indexOf(vistaCats) < 0) vistaCats = 'dona';
+
+// Paleta para gráficas y cuentas nuevas (incluye los colores de las 5 actuales)
+var PALETA = ['#1A73E8', '#DA0081', '#F9AB00', '#188038', '#820AD1',
+              '#C5221F', '#12B5CB', '#FF6D01', '#FDDA24', '#9AA0A6'];
+
+var $ = function (id) { return document.getElementById(id); };
+
+// ------------------------------------------------ Formato colombiano
+/** 44404 -> "44.404" ; 44404.5 -> "44.404,50" (sin el signo $). */
+function montoATexto(n) {
+  var opciones = (Math.round(n * 100) % 100 === 0)
+    ? { maximumFractionDigits: 0 }
+    : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return Number(n).toLocaleString('es-CO', opciones);
+}
+/* ---------- Dinero (v9): una sola capa de formato -----------------------
+   Dos casos, según de dónde viene el número:
+     fmtBase(nCOP): monto CONSOLIDADO (el backend lo da en COP). Se muestra en
+       la moneda base dividiendo por su tasa. Lo usan patrimonio, resúmenes,
+       tablas y gráficas.
+     fmtNativo(n, moneda): monto en SU moneda (saldo de una cuenta, valor de un
+       movimiento). Se muestra tal cual, con su código si no es la base.
+   `conCodigo` añade el código de moneda en gris (solo en lugares clave). */
+var monedaBase = 'COP';
+
+var INFO_MONEDA = {
+  COP: { simbolo: '$', dec: 0 }, USD: { simbolo: 'US$', dec: 2 }, EUR: { simbolo: '€', dec: 2 },
+  GBP: { simbolo: '£', dec: 2 }, BRL: { simbolo: 'R$', dec: 2 }, MXN: { simbolo: 'MX$', dec: 2 },
+  ARS: { simbolo: 'AR$', dec: 2 }, CLP: { simbolo: '$', dec: 0 }, PEN: { simbolo: 'S/', dec: 2 },
+  CAD: { simbolo: 'CA$', dec: 2 }, CHF: { simbolo: 'CHF', dec: 2 }, JPY: { simbolo: '¥', dec: 0 }
+};
+function infoMoneda(m) { return INFO_MONEDA[m] || { simbolo: (m || '') + ' ', dec: 2 }; }
+function simboloDe(moneda) { return infoMoneda(moneda).simbolo; }
+
+/** Número con miles es-CO. dec=0 = enteros salvo que haya centavos reales. */
+function numeroMoneda(n, dec) {
+  n = Number(n);
+  if (!isFinite(n)) n = 0; // evita mostrar "NaN" si una tasa o cálculo se rompe
+  if (dec === 0) {
+    return (Math.round(n * 100) % 100 === 0)
+      ? Number(n).toLocaleString('es-CO', { maximumFractionDigits: 0 })
+      : Number(n).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  return Number(n).toLocaleString('es-CO', { minimumFractionDigits: dec, maximumFractionDigits: dec });
+}
+
+/** El código de moneda en gris pequeño (para las cifras clave). */
+function conCodigoBase(txt, moneda) {
+  return txt + '<span class="cod-moneda">' + moneda + '</span>';
+}
+
+/** Monto en su propia moneda. `conCodigo`: HTML con el código (solo si ≠ base). */
+function fmtNativo(n, moneda, conCodigo) {
+  moneda = moneda || 'COP';
+  var inf = infoMoneda(moneda);
+  var txt = inf.simbolo + ' ' + numeroMoneda(n, inf.dec);
+  if (conCodigo === 'html') return conCodigoBase(txt, moneda); // siempre el código, en HTML
+  if (conCodigo && moneda !== monedaBase) txt += ' ' + moneda;
+  return txt;
+}
+
+/** Tasa de la moneda base a COP (1 si es COP, o si la base perdió su tasa). */
+function tasaBase() {
+  if (monedaBase === 'COP') return 1;
+  var t = (datos && datos.tasas || {})[monedaBase];
+  return (t && t.tasa > 0) ? t.tasa : 1;
+}
+
+/** Monto consolidado (en COP) mostrado en la moneda base. */
+function fmtBase(nCOP, conCodigo) {
+  return fmtNativo(nCOP / tasaBase(), monedaBase, conCodigo);
+}
+function cuentaPorNombre(n) {
+  return datos ? (datos.cuentas.filter(function (c) { return c.cuenta === n; })[0] || null) : null;
+}
+
+/**
+ * Texto del equivalente en la MONEDA BASE de una cuenta que está en otra moneda.
+ * Respeta el mismo signo que la línea principal: una deuda se muestra en
+ * positivo ("debes"), así que su equivalente también (si no, salía "≈ $ -80.000").
+ * Devuelve '' si la cuenta ya está en la base, y avisa si no hay tasa.
+ */
+function textoEquivalente(c, conTasa) {
+  if (c.moneda === monedaBase) return '';
+  // Solo las monedas foráneas (no COP) tienen tasa propia que pueda faltar
+  var t = (datos.tasas || {})[c.moneda] || {};
+  if (c.moneda !== 'COP' && (t.sinTasa || !(t.tasa > 0))) {
+    return '⚠ Sin tasa de ' + c.moneda + ': no está sumando al patrimonio (pon una tasa manual en Ajustes)';
+  }
+  var esDeudaEnRojo = (c.tipo === 'Deuda' && c.saldo <= 0);
+  var valorCOP = esDeudaEnRojo ? -c.saldoCOP : c.saldoCOP;
+  var txt = '≈ ' + fmtBase(Math.round(valorCOP));
+  // La tasa se expresa en la base: 1 [moneda] = [base] (rate/tasaBase)
+  if (conTasa && c.moneda !== 'COP') {
+    txt += ' · 1 ' + c.moneda + ' = ' + fmtNativo(t.tasa / tasaBase(), monedaBase);
+    if (t.esManual) txt += ' (tasa manual)';
+  }
+  return txt;
+}
+/** Moneda de una cuenta por nombre ('COP' si no está). */
+function monedaDe(nombre) {
+  var c = cuentaPorNombre(nombre);
+  return c ? (c.moneda || 'COP') : 'COP';
+}
+/** Tasa a COP de una cuenta (1 para COP). */
+function tasaDe(nombre) {
+  var c = cuentaPorNombre(nombre);
+  return c && c.tasa !== undefined ? c.tasa : 1;
+}
+/** '#RRGGBB' + alfa -> 'rgba(r,g,b,a)' (para degradados de las gráficas). */
+function hexA(hex, a) {
+  var r = parseInt(hex.substring(1, 3), 16), g = parseInt(hex.substring(3, 5), 16), b = parseInt(hex.substring(5, 7), 16);
+  return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
+}
+
+/* Convierte lo escrito en el campo de monto a Number.
+   Acepta "12500", "12.500", "12500,50", "12.500,50" y negativos. */
+function parsearMonto(txt) {
+  var s = String(txt).trim().replace(/\$|\s/g, '');
+  if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+  else if (/^-?\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, ''); // solo puntos de miles
+  return parseFloat(s);
+}
+
+/* Formatea el campo mientras se escribe (44404 -> 44.404) para que un dedazo
+   de un dígito salte a la vista. Conserva la posición del cursor contando los
+   dígitos que quedaban a su izquierda. */
+function formatearMontoEnVivo(inp, permitirNegativo) {
+  var txt = inp.value;
+  var pos = inp.selectionStart;
+  // El ancla cuenta dígitos Y la coma decimal: contar solo dígitos dejaría el
+  // cursor antes de la coma al escribirla, y el decimal siguiente entraría mal.
+  var sigAntes = (txt.slice(0, pos).match(/[\d,]/g) || []).length;
+
+  var negativo = permitirNegativo && txt.trim().charAt(0) === '-';
+  var limpio = txt.replace(/[^\d,]/g, '');          // fuera los puntos de miles viejos
+  var partes = limpio.split(',');
+  var enteros = partes[0].replace(/^0+(?=\d)/, ''); // sin ceros a la izquierda
+  var decimales = partes.length > 1 ? partes.slice(1).join('').substring(0, 2) : null;
+
+  var salida = enteros ? Number(enteros).toLocaleString('es-CO') : '';
+  if (decimales !== null) salida = (salida || '0') + ',' + decimales;
+  if (negativo && (salida || txt.trim() === '-')) salida = '-' + salida;
+  inp.value = salida;
+
+  // Devolver el cursor a donde estaba, medido en esos mismos caracteres
+  var nuevaPos = salida.length, vistos = 0;
+  if (sigAntes === 0) {
+    nuevaPos = negativo ? 1 : 0;
+  } else {
+    for (var i = 0; i < salida.length; i++) {
+      if (/[\d,]/.test(salida.charAt(i)) && ++vistos === sigAntes) { nuevaPos = i + 1; break; }
+    }
+  }
+  inp.setSelectionRange(nuevaPos, nuevaPos);
+}
+
+var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+function nombreMes(yyyymm) {
+  var p = yyyymm.split('-');
+  return MESES[Number(p[1]) - 1] + ' ' + p[0];
+}
+function fechaBonita(iso) {
+  var hoy = datos ? datos.hoy : '';
+  if (iso === hoy) return 'Hoy';
+  var p = iso.split('-');
+  var ayer = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) + 1, 12);
+  var d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12);
+  if (hoy && Utilities_fmt(ayer) === hoy) return 'Ayer';
+  var dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+  return dias[d.getDay()] + ' ' + Number(p[2]) + ' ' + MESES[Number(p[1]) - 1];
+}
+function Utilities_fmt(d) { // yyyy-mm-dd de un Date local
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+// ------------------------------------------------ Toast y carga
+var toastTimer = null;
+function toast(msg, tipo) {
+  var t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (tipo || '');
+  // Los errores se anuncian de inmediato (assertive); el resto, sin interrumpir.
+  t.setAttribute('role', tipo === 'error' ? 'alert' : 'status');
+  t.setAttribute('aria-live', tipo === 'error' ? 'assertive' : 'polite');
+  t.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(function () { t.hidden = true; }, 3200);
+}
+function cargando(v) { $('cargando').style.display = v ? 'flex' : 'none'; }
+
+// ------------------------------------------------ Comunicación con Apps Script
+var MENSAJES_OK = {
+  agregarMovimiento: 'Movimiento guardado',
+  editarMovimiento: 'Cambios guardados',
+  borrarMovimiento: 'Movimiento borrado',
+  ajustarSaldo: 'Cuenta cuadrada',
+  editarCuenta: 'Saldo inicial actualizado',
+  ajustarInicioMes: 'Inicio de mes ajustado',
+  agregarCuenta: 'Cuenta creada',
+  eliminarCuenta: 'Cuenta eliminada',
+  agregarCategoria: 'Categoría creada',
+  eliminarCategoria: 'Categoría eliminada',
+  editarCategoria: 'Categoría actualizada',
+  reordenarCuentas: 'Orden guardado',
+  guardarPresupuesto: 'Presupuestos actualizados'
+};
+
+/** SVG de un icono del sprite (para armar botones por JS). */
+function icono(nombre, mini) {
+  return '<svg class="ic' + (mini ? ' ic-mini' : '') + '"><use href="#i-' + nombre + '"/></svg>';
+}
+
+/**
+ * Marca un botón como elegido: la clase que lo pinta y el `aria-pressed` que lo
+ * anuncia, siempre juntos. Están en la misma función a propósito: cuando eran
+ * dos líneas sueltas, el aria se olvidaba y un lector de pantalla no tenía forma
+ * de saber cuál de los chips estaba seleccionado.
+ */
+function marcarActivo(btn, activo) {
+  btn.classList.toggle('activa', !!activo);
+  btn.setAttribute('aria-pressed', activo ? 'true' : 'false');
+}
+
+/** Minúsculas y sin tildes: así "cafe" encuentra "Café" y viceversa. */
+function normalizarTexto(t) {
+  return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
+
+/**
+ * Rellena un <select> conservando lo que estuviera elegido (si sigue existiendo).
+ * La usan el Historial, Ajustes y los modales de edición.
+ */
+function llenarSelect(sel, valores, textoTodos, fmt) {
+  var actual = sel.value;
+  sel.innerHTML = '<option value="">' + textoTodos + '</option>';
+  valores.forEach(function (v) {
+    var o = document.createElement('option');
+    o.value = v;
+    o.textContent = fmt ? fmt(v) : v;
+    sel.appendChild(o);
+  });
+  sel.value = actual; // conserva el filtro si sigue existiendo
+}
+
+/* ------------------------------------------------ Preguntar (confirm/prompt)
+   Los diálogos nativos del navegador se ven como ventanas grises del sistema,
+   ajenas al diseño, y dentro del iframe de Apps Script quedan aún peor. Estos
+   dos helpers usan el modal propio; el callback recibe la respuesta (null =
+   canceló), así que se llaman con función en vez de leerse en línea. */
+var preguntaCb = null;
+
+/** Confirmación: cb(true) si acepta, cb(false) si cancela. */
+function confirmar(texto, opciones, cb) {
+  if (typeof opciones === 'function') { cb = opciones; opciones = {}; }
+  opciones = opciones || {};
+  $('pregunta-titulo').textContent = opciones.titulo || '¿Seguro?';
+  $('pregunta-texto').textContent = texto;
+  $('pregunta-campo').hidden = true;
+  $('pregunta-input').value = '';
+  $('pregunta-ok').textContent = opciones.aceptar || 'Aceptar';
+  $('pregunta-ok').className = 'btn-principal compacto' + (opciones.peligro ? ' peligro' : '');
+  preguntaCb = function (valor) { cb(valor !== null); };
+  $('modal-pregunta').hidden = false;
+  $('pregunta-ok').focus();
+}
+
+/** Pide un texto: cb(valor) o cb(null) si cancela. */
+function pedirTexto(texto, opciones, cb) {
+  if (typeof opciones === 'function') { cb = opciones; opciones = {}; }
+  opciones = opciones || {};
+  $('pregunta-titulo').textContent = opciones.titulo || 'Escribe un valor';
+  $('pregunta-texto').textContent = texto;
+  $('pregunta-campo').hidden = false;
+  $('pregunta-etiqueta').textContent = opciones.etiqueta || 'Valor';
+  var inp = $('pregunta-input');
+  inp.value = opciones.valor || '';
+  inp.inputMode = opciones.numerico ? 'decimal' : 'text';
+  $('pregunta-ok').textContent = opciones.aceptar || 'Guardar';
+  $('pregunta-ok').className = 'btn-principal compacto';
+  preguntaCb = cb;
+  $('modal-pregunta').hidden = false;
+  inp.focus();
+  inp.select();
+}
+
+/** ¿Hay algún modal abierto? (Escape tiene que cerrar el de encima, no la vista.) */
+function hayModalAbierto() {
+  return [].some.call(document.querySelectorAll('.modal-fondo'), function (m) {
+    return !m.hidden;
+  });
+}
+
+function cerrarPregunta(valor) {
+  if ($('modal-pregunta').hidden) return;
+  $('modal-pregunta').hidden = true;
+  var cb = preguntaCb;
+  preguntaCb = null;
+  if (cb) cb(valor);
+}
+
+/** Cuentas separadas por tipo (las deudas viven aparte en el Panel). */
+function cuentasActivas() { return datos.cuentas.filter(function (c) { return c.tipo !== 'Deuda'; }); }
+function cuentasDeuda() { return datos.cuentas.filter(function (c) { return c.tipo === 'Deuda'; }); }
+
+/* `args` es siempre un array. `alTerminar(ok)` corre tanto si funcionó como si
+   falló: quien llama decide qué limpiar o rehabilitar según el resultado. */
+function llamar(fn, args, alTerminar) {
+  cargando(true);
+  var r = google.script.run
+    .withSuccessHandler(function (resp) {
+      datos = resp;
+      cargando(false);
+      renderTodo();
+      if (MENSAJES_OK[fn]) toast(MENSAJES_OK[fn], 'exito');
+      if (alTerminar) alTerminar(true);
+    })
+    .withFailureHandler(function (err) {
+      cargando(false);
+      toast(err && err.message ? err.message : 'Error de conexión', 'error');
+      if (alTerminar) alTerminar(false);
+    });
+  r[fn].apply(r, args);
+}
+function cargarDatos(silencioso, forzar) {
+  if (!silencioso) cargando(true);
+  google.script.run
+    .withSuccessHandler(function (resp) {
+      datos = resp;
+      guardarCacheDatos(resp); // para pintar al instante la próxima vez
+      cargando(false);
+      ocultarAvisoCache();
+      renderTodo();
+      procesarCola(); // si quedó algo pendiente de subir, aprovechar que hay red
+    })
+    .withFailureHandler(function (err) {
+      cargando(false);
+      // Sin conexión no es un error que valga la pena gritar si ya se está
+      // mostrando el último estado guardado: el chip del header lo dice mejor.
+      if (!hayRed() && datos) pintarEstadoRed();
+      else toast(err && err.message ? err.message : 'No pude cargar los datos', 'error');
+    })
+    // forzar=true ignora el caché del servidor (botón ⟳ y "volver a la app");
+    // la primera carga no lo pasa, así que puede usar caché si está activado.
+    .getDatos(forzar);
+}
+
+/* =====================================================================
+   MODO SIN CONEXIÓN (resiliente)
+   La app vive dentro de Apps Script, así que NO puede abrirse sin internet
+   (un Service Worker tendría que servirse como archivo aparte del mismo
+   origen, y HtmlService sirve un solo archivo). Lo que sí se cubre es el
+   caso real: se cae la señal con la app abierta.
+     - Lo que registres queda en una COLA en el teléfono y se sube solo al
+       volver la conexión. Cada uno lleva un `uid` para que reintentar nunca
+       duplique el gasto (el servidor reconoce los que ya escribió).
+     - El último estado recibido se guarda para pintarlo al instante.
+   ===================================================================== */
+var CLAVE_COLA = 'colaPendientes';
+var CLAVE_CACHE = 'ultimosDatos';
+var subiendoCola = false;
+
+function hayRed() { return navigator.onLine !== false; }
+
+function leerCola() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_COLA)) || []; }
+  catch (e) { return []; }
+}
+function guardarCola(cola) {
+  try { localStorage.setItem(CLAVE_COLA, JSON.stringify(cola)); } catch (e) { /* sin espacio */ }
+  pintarEstadoRed();
+}
+/** Identificador único del movimiento, para que el reintento no duplique. */
+function nuevoUid() {
+  return 'u' + Date.now().toString(36) + Math.random().toString(36).substring(2, 8);
+}
+
+/** Guarda el último getDatos para pintarlo al instante en la próxima apertura. */
+function guardarCacheDatos(d) {
+  try { localStorage.setItem(CLAVE_CACHE, JSON.stringify({ cuando: Date.now(), datos: d })); }
+  catch (e) { /* no cabe: seguimos sin caché, la app funciona igual */ }
+}
+function leerCacheDatos() {
+  try { return JSON.parse(localStorage.getItem(CLAVE_CACHE)); } catch (e) { return null; }
+}
+
+/** Chip del header: sin conexión y/o pendientes por subir. */
+function pintarEstadoRed() {
+  var chip = $('chip-red');
+  if (!chip) return;
+  var n = leerCola().length;
+  var sinRed = !hayRed();
+  if (!n && !sinRed) { chip.hidden = true; chip.innerHTML = ''; return; }
+
+  chip.hidden = false;
+  chip.classList.toggle('subiendo', subiendoCola);
+  if (n) {
+    chip.innerHTML = icono('nube-subir') + (subiendoCola ? 'Subiendo…' : n + ' por subir');
+    chip.title = subiendoCola
+      ? 'Subiendo lo que quedó pendiente'
+      : n + (n === 1 ? ' movimiento guardado en el teléfono' : ' movimientos guardados en el teléfono') +
+        ' — se suben solos al volver la conexión (toca para intentar ahora)';
+  } else {
+    chip.innerHTML = icono('sin-red') + 'Sin conexión';
+    chip.title = 'Sin conexión: lo que registres queda guardado y se sube al reconectar';
+  }
+}
+
+/** Aviso de "estás viendo lo último guardado" mientras llega el dato fresco. */
+function mostrarAvisoCache(cuando) {
+  var cont = $('vista-resumen');
+  if (!cont || $('aviso-cache')) return;
+  var d = document.createElement('div');
+  d.id = 'aviso-cache';
+  d.className = 'aviso-cache';
+  var min = Math.round((Date.now() - cuando) / 60000);
+  d.textContent = min < 1 ? 'Mostrando lo último guardado · actualizando…'
+    : 'Mostrando lo guardado hace ' + (min < 60 ? min + ' min' : Math.round(min / 60) + ' h') + ' · actualizando…';
+  cont.insertBefore(d, cont.firstChild);
+}
+function ocultarAvisoCache() {
+  var d = $('aviso-cache');
+  if (d) d.parentNode.removeChild(d);
+}
+
+/**
+ * Encola un movimiento para subirlo después. Devuelve true si quedó encolado.
+ * Solo se encolan ALTAS: editar/borrar/cuadrar dependen de ids y de saldos que
+ * pudieron cambiar, y reintentarlos a ciegas sí podría dejar la hoja mal.
+ */
+function encolarMovimiento(mov) {
+  var cola = leerCola();
+  cola.push(mov);
+  guardarCola(cola);
+  return true;
+}
+
+/**
+ * Sube lo pendiente, de a uno y en orden.
+ * Si el servidor RECHAZA un movimiento (p. ej. se borró la cuenta mientras
+ * tanto), se saca de la cola y se avisa: dejarlo dentro lo volvería eterno.
+ * Si el fallo es de red, se queda para el próximo intento.
+ */
+function procesarCola(alTerminar) {
+  if (subiendoCola) return;
+  var cola = leerCola();
+  if (!cola.length || !hayRed()) { pintarEstadoRed(); if (alTerminar) alTerminar(); return; }
+
+  subiendoCola = true;
+  pintarEstadoRed();
+
+  var siguiente = function () {
+    var pend = leerCola();
+    if (!pend.length) {
+      subiendoCola = false;
+      pintarEstadoRed();
+      toast('Listo: ya se subió todo lo pendiente', 'exito');
+      if (alTerminar) alTerminar();
+      return;
+    }
+    var mov = pend[0];
+    google.script.run
+      .withSuccessHandler(function (resp) {
+        datos = resp;
+        guardarCacheDatos(resp);
+        var q = leerCola();
+        q.shift();               // fuera el que acaba de subir
+        guardarCola(q);
+        renderTodo();
+        siguiente();
+      })
+      .withFailureHandler(function (err) {
+        subiendoCola = false;
+        if (!hayRed()) { pintarEstadoRed(); if (alTerminar) alTerminar(); return; }
+        // Falló con conexión: el servidor lo rechazó. Se descarta y se explica.
+        var q = leerCola();
+        q.shift();
+        guardarCola(q);
+        toast('No se pudo guardar un movimiento pendiente: ' +
+          (err && err.message ? err.message : 'lo rechazó el servidor'), 'error');
+        siguiente();
+      })
+      .agregarMovimiento(mov);
+  };
+  siguiente();
+}
+
+// ------------------------------------------------ Esqueletos de carga inicial
+/* En la PRIMERA carga no hay velo: se pintan bloques con brillo donde irán las
+   cifras y tarjetas (nada de saltos). El velo queda para las acciones. */
+function pintarEsqueletos() {
+  cargando(false);
+  var esq = function (ancho) { return '<span class="esqueleto" style="width:' + ancho + '">&nbsp;</span>'; };
+  $('txt-patrimonio').innerHTML = esq('60%');
+  $('txt-desglose').innerHTML = esq('80%');
+  var lc = $('lista-cuentas');
+  lc.innerHTML = '';
+  for (var i = 0; i < 4; i++) {
+    var d = document.createElement('div');
+    d.className = 'tarjeta-cuenta';
+    d.innerHTML = '<div class="nombre">' + esq('70%') + '</div>' +
+      '<div class="saldo">' + esq('55%') + '</div>' +
+      '<div class="spark-wrap">' + esq('100%') + '</div>';
+    lc.appendChild(d);
+  }
+  ['txt-inicio-mes', 'txt-ingresos', 'txt-gastos', 'txt-neto'].forEach(function (id) {
+    $(id).innerHTML = esq('72px');
+  });
+}
+
+// ------------------------------------------------ Render general
+function renderTodo() {
+  if (!datos) return;
+  monedaBase = datos.monedaBase || 'COP'; // en qué moneda se muestra todo
+  // Cada bloque va aislado: si uno falla (un dato raro, Chart.js, etc.) el
+  // resto de la UI se sigue pintando en vez de quedar a medio renderizar.
+  [renderChipsRegistrar, renderResumen, renderMeses, renderFiltros, renderHistorial]
+    .forEach(function (fn) {
+      try { fn(); } catch (e) { console.error('renderTodo: falló ' + fn.name, e); }
+    });
+  manejarHash(); // si hay una cuenta abierta (o llega en el hash), refrescarla
+}
+
+/* ------------------------------------------------ Calendario
+   Aritmética de texto sobre 'yyyy-MM', sin objetos Date: mezclar
+   `new Date(y,m,d)` con formatDate de otra zona ya corrió los meses una vez
+   (ver el bug de julio en el README). */
+
+/** Días que tiene un mes 'yyyy-MM', contando bisiestos. */
+function diasDelMes(mes) {
+  var y = Number(mes.substring(0, 4));
+  var m = Number(mes.substring(5, 7));
+  if (m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0)) return 29;
+  return [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][m - 1];
+}
+
+/** Mes anterior a 'yyyy-MM', también como 'yyyy-MM'. */
+function mesAnterior(mes) {
+  var y = Number(mes.substring(0, 4));
+  var m = Number(mes.substring(5, 7)) - 1;
+  if (m === 0) { m = 12; y -= 1; }
+  return y + '-' + ('0' + m).slice(-2);
+}
+
+/** Último día del mes anterior, en ISO. Versión cliente de ultimoDiaMesAnterior_. */
+function ultimoDiaMesAnteriorCli(mes) {
+  var previo = mesAnterior(mes);
+  return previo + '-' + ('0' + diasDelMes(previo)).slice(-2);
+}
+
+/** Conecta lo transversal: el modal de preguntar y el estado de la conexion. */
+function conectarCore() {
+  // Modal de preguntar (reemplaza confirm/prompt nativos)
+  $('pregunta-ok').onclick = function () {
+    cerrarPregunta($('pregunta-campo').hidden ? true : $('pregunta-input').value);
+  };
+  $('pregunta-cancelar').onclick = function () { cerrarPregunta(null); };
+  $('modal-pregunta').onclick = function (e) { if (e.target === this) cerrarPregunta(null); };
+  $('pregunta-input').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') $('pregunta-ok').click(); // Enter confirma, como en el nativo
+  });
+
+  // Recarga automatica al volver a la app (cambiar de pestana, desbloquear)
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState !== 'visible' || !datos) return;
+    procesarCola();          // primero subir lo pendiente, si lo hay
+    cargarDatos(true, true); // volver a la app = datos frescos
+  });
+
+  // Cambios de conexion: al volver la red se sube solo lo que quedo en cola
+  window.addEventListener('online', function () {
+    pintarEstadoRed();
+    procesarCola();
+    if (datos) cargarDatos(true, true);
+  });
+  window.addEventListener('offline', pintarEstadoRed);
+  // Tocar el chip fuerza el intento (sin esperar al evento del sistema)
+  $('chip-red').onclick = function () {
+    if (!hayRed()) return toast('Sigue sin haber conexion', 'error');
+    procesarCola();
+  };
+}
+</script>

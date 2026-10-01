@@ -1,0 +1,136 @@
+<script>
+/* =====================================================================
+   Finanzas App — Navegación entre vistas y el arranque (DOMContentLoaded): aquí se conectan
+   todos los botones, así que va SIEMPRE de último.
+   ===================================================================== */
+
+// ============================================================ NAVEGACIÓN
+/* Vistas de nav (barra/sidebar): resumen, meses, historial, ajustes. Registrar
+   y cuenta son SUBVISTAS: se abren por hash (#registrar, #cuenta/Nombre), y el
+   botón atrás del navegador las cierra volviendo a `vistaBase`. */
+var TITULOS = { registrar: 'Registrar', resumen: 'Panel', meses: 'Evolución', historial: 'Historial', ajustes: 'Ajustes', cuenta: 'Cuenta' };
+var vistaActual = 'resumen';
+var vistaBase = 'resumen'; // última vista de nav; a ella vuelve el back de una subvista
+
+function irA(vista) {
+  var esSubvista = (vista === 'cuenta' || vista === 'registrar');
+  // Ir a una vista de nav: recordarla como base y soltar la subvista (limpia el
+  // hash). Excepción: el hash de un grupo de Ajustes (#ajustes/monedas) ES de
+  // esta vista, así que no hay que borrarlo o el deep-link no llegaría a nada.
+  var hashPropio = (vista === 'ajustes' && location.hash.indexOf('#ajustes') === 0);
+  if (!esSubvista) {
+    vistaBase = vista;
+    cuentaDetalle = null;
+    if (location.hash && !hashPropio) history.replaceState(null, '', location.pathname + location.search);
+  }
+  vistaActual = vista;
+  document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
+  $('vista-' + vista).classList.add('activa');
+  // La subvista de cuenta cuelga del Panel; Registrar no marca ninguna pestaña
+  var navVista = vista === 'cuenta' ? 'resumen' : vista;
+  document.querySelectorAll('.nav-btn').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.vista === navVista);
+  });
+  // En Registrar el FAB se esconde en móvil (el CTA es Guardar)
+  document.body.classList.toggle('en-registrar', vista === 'registrar');
+  $('titulo-vista').textContent = TITULOS[vista];
+  window.scrollTo(0, 0);
+  // Los canvas ocultos se dibujan mal: redibujar al mostrar su vista
+  if (vista === 'resumen') renderGraficas();
+  if (vista === 'meses') renderEvolucion();
+  if (vista === 'cuenta') renderCuentaDetalle();
+  if (vista === 'ajustes') renderAjustes();
+}
+
+/** ¿Estamos en el layout de escritorio? (mismo corte que las media queries) */
+function esEscritorio() {
+  return window.matchMedia && matchMedia('(min-width: 900px)').matches;
+}
+
+/** Abre Registrar (subvista por hash). Opcionalmente preselecciona el origen. */
+function abrirRegistrar(cuentaOrigen) {
+  if (cuentaOrigen) { cuentaSel = cuentaOrigen; destinoSel = ''; }
+  limpiarErrores();
+  renderChipsRegistrar(); // reflejar la preselección antes de mostrar la vista
+  location.hash = '#registrar';
+  // En PC el cursor entra directo al monto: es lo primero que uno escribe.
+  // En el celular NO: abriría el teclado tapando media pantalla antes de que
+  // el usuario haya decidido siquiera qué tipo de movimiento es.
+  if (esEscritorio()) setTimeout(function () { $('inp-monto').focus(); }, 60);
+}
+/** Cierra Registrar. Intenta volver por el historial (deja el botón atrás del
+    navegador consistente), pero si el back no cierra la vista —pasa a ratos
+    dentro del iframe de Apps Script— fuerza la vuelta a la base como respaldo. */
+function cerrarRegistrar() {
+  if (location.hash === '#registrar') {
+    history.back();
+    setTimeout(function () { if (vistaActual === 'registrar') irA(vistaBase); }, 120);
+  } else {
+    irA(vistaBase);
+  }
+}
+
+// ============================================================ ARRANQUE
+document.addEventListener('DOMContentLoaded', function () {
+  // Cada módulo conecta LO SUYO. Este archivo solo los llama en orden y arranca
+  // la carga: hasta v10 aquí vivía un DOMContentLoaded de 357 líneas que cableaba
+  // los botones de todas las vistas y crecía con cada una que se agregara.
+  conectarCore();
+  conectarNavegacion();
+  conectarRegistrar();
+  conectarPanel();
+  conectarHistorial();
+  conectarCuentas();
+  conectarEvolucion();
+  conectarAjustes();
+  arrancar();
+});
+
+/** Navegación: pestañas, subvistas por hash, refrescar y la tecla Escape. */
+function conectarNavegacion() {
+  document.querySelectorAll('.nav-btn').forEach(function (b) {
+    b.onclick = function () { irA(b.dataset.vista); };
+  });
+  // Registrar: FAB (móvil) / botón del sidebar (PC), y su botón "Volver"
+  $('btn-registrar').onclick = function () { abrirRegistrar(); };
+  $('reg-volver').onclick = cerrarRegistrar;
+  $('btn-refrescar').onclick = function () { cargarDatos(false, true); }; // ⟳ siempre trae fresco
+  window.addEventListener('hashchange', manejarHash);
+
+  // Escape cierra lo que esté abierto, de dentro hacia fuera: primero el modal
+  // que haya; si no hay ninguno, la subvista o el grupo de Ajustes.
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    if (!hayModalAbierto()) {
+      if (vistaActual === 'registrar') cerrarRegistrar();
+      else if (vistaActual === 'ajustes' && grupoAjustes && !esEscritorio()) cerrarGrupoAjustes();
+      return;
+    }
+    if (!$('modal-pregunta').hidden) cerrarPregunta(null);
+    else if (!$('modal-recur').hidden) cerrarRecurEditor();
+    else if (!$('modal-fondo').hidden) cerrarModal();
+    else if (!$('modal-ajuste').hidden) cerrarAjuste();
+    else if (!$('modal-mes').hidden) cerrarMes();
+    else if (!$('modal-cuenta').hidden) cerrarModalCuenta();
+    else if (!$('modal-cat').hidden) cerrarCatEditor();
+  });
+}
+
+/**
+ * Primera carga. Si hay un estado guardado se pinta YA (la app se siente
+ * instantánea y, sin conexión, al menos se ven los saldos de la última vez);
+ * si no, van los esqueletos. En ambos casos se pide el dato fresco detrás.
+ */
+function arrancar() {
+  var cache = leerCacheDatos();
+  if (cache && cache.datos) {
+    datos = cache.datos;
+    renderTodo();
+    mostrarAvisoCache(cache.cuando);
+  } else {
+    pintarEsqueletos();
+  }
+  pintarEstadoRed();
+  cargarDatos(true);
+}
+</script>
