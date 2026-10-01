@@ -506,9 +506,38 @@ function actualizarBloqueValorDestino() {
   }
 }
 
-function habilitarGuardar(v) { $('btn-guardar').disabled = !v; }
+function habilitarGuardar(v) {
+  $('btn-guardar').disabled = !v;
+  $('btn-guardar-otro').disabled = !v;
+}
 
-function guardar() {
+var tanda = []; // movimientos guardados en esta sesión de Registrar (modo "agregar otro")
+
+function renderTanda() {
+  var cont = $('lista-tanda');
+  cont.innerHTML = '';
+  $('bloque-tanda').hidden = tanda.length === 0;
+  if (!tanda.length) return;
+  $('tanda-titulo').textContent = 'Agregados ahora (' + tanda.length + ')';
+  tanda.slice().reverse().forEach(function (t) {
+    var f = document.createElement('div');
+    f.className = 'tanda-fila';
+    var izq = document.createElement('span');
+    izq.textContent = t.categoria || t.tipo;
+    var sub = document.createElement('span');
+    sub.className = 'mini';
+    sub.textContent = t.cuenta + (t.descripcion ? ' · ' + t.descripcion : '');
+    izq.appendChild(sub);
+    var der = document.createElement('b');
+    der.textContent = fmtNativo(t.valor, t.moneda);
+    f.appendChild(izq);
+    f.appendChild(der);
+    cont.appendChild(f);
+  });
+}
+
+function guardar(seguir) {
+  if ($('btn-guardar').disabled) return; // ya hay un guardado en curso
   var valor = parsearMonto($('inp-monto').value);
   var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
 
@@ -529,7 +558,7 @@ function guardar() {
   // El botón queda bloqueado hasta que el servidor responda: Apps Script tarda
   // 1-2 s y un segundo toque crearía una fila duplicada.
   habilitarGuardar(false);
-  llamar('agregarMovimiento', [{
+  var mov = {
     fecha: $('inp-fecha').value,
     cuenta: cuentaSel,
     tipo: tipoSel,
@@ -538,7 +567,8 @@ function guardar() {
     descripcion: $('inp-desc').value.trim(),
     valor: valor,
     valorDestino: valorDestino
-  }], function (ok) {
+  };
+  llamar('agregarMovimiento', [mov], function (ok) {
     habilitarGuardar(true);
     // Solo si quedó guardado: si falló, el usuario conserva lo que escribió.
     if (ok) {
@@ -546,8 +576,16 @@ function guardar() {
       $('inp-desc').value = '';
       $('inp-valor-destino').value = '';
       localStorage.setItem('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
-      // Registrar es una subvista: al guardar, volver a donde estabas
-      cerrarRegistrar();
+      if (seguir === true) {
+        // Modo tanda: se queda en el formulario con cuenta/categoría/fecha intactas
+        mov.moneda = monedaDe(mov.cuenta);
+        tanda.push(mov);
+        renderTanda();
+        $('inp-monto').focus();
+      } else {
+        // Registrar es una subvista: al guardar, volver a donde estabas
+        cerrarRegistrar();
+      }
     }
   });
 }
@@ -2547,6 +2585,7 @@ function irA(vista) {
     cuentaDetalle = null;
     if (location.hash) history.replaceState(null, '', location.pathname + location.search);
   }
+  if (vista !== 'registrar' && tanda.length) { tanda = []; renderTanda(); } // tanda nueva en cada visita
   vistaActual = vista;
   document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
   $('vista-' + vista).classList.add('activa');
@@ -2606,7 +2645,12 @@ document.addEventListener('DOMContentLoaded', function () {
   });
   elegirTipo('Gasto');
 
-  $('btn-guardar').onclick = guardar;
+  $('btn-guardar').onclick = function () { guardar(false); };
+  $('btn-guardar-otro').onclick = function () { guardar(true); };
+  // Enter en el monto = guardar y agregar otro (rápido en PC)
+  $('inp-monto').addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') { e.preventDefault(); guardar(true); }
+  });
   $('btn-refrescar').onclick = function () { cargarDatos(false, true); }; // ⟳ siempre trae fresco
   document.querySelectorAll('.nav-btn').forEach(function (b) {
     b.onclick = function () { irA(b.dataset.vista); };

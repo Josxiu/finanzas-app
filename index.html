@@ -92,6 +92,15 @@
         </div>
 
         <button id="btn-guardar" class="btn-principal">Guardar gasto</button>
+        <button id="btn-guardar-otro" class="btn-secundario btn-otro" type="button" title="Guarda y deja el formulario abierto con la misma cuenta, categoría y fecha"><svg class="ic"><use href="#i-mas"/></svg><span>Guardar y agregar otro</span></button>
+
+        <!-- Lo guardado en esta tanda (se vacía al salir de Registrar) -->
+        <div class="tarjeta" id="bloque-tanda" hidden>
+          <div class="titulo-seccion">
+            <span class="etiqueta" id="tanda-titulo">Agregados ahora</span>
+          </div>
+          <div id="lista-tanda"></div>
+        </div>
       </div>
 
       <div class="col">
