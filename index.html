@@ -156,7 +156,18 @@
 
       <!-- Fuera de las .col a propósito: así el tabulador llega a Guardar
            DESPUÉS de cuenta y categoría, y no a mitad del formulario. -->
-      <button id="btn-guardar" class="btn-principal" type="submit">Guardar gasto</button>
+      <div id="reg-acciones">
+        <button id="btn-guardar" class="btn-principal" type="submit">Guardar gasto</button>
+        <!-- Para meter varias compras seguidas: guarda y deja el formulario
+             abierto con la misma cuenta, categoría y fecha. -->
+        <button id="btn-guardar-otro" class="btn-secundario" type="button" title="Guarda y deja el formulario abierto con la misma cuenta, categoría y fecha"><svg class="ic"><use href="#i-mas"/></svg>Guardar y agregar otro</button>
+
+        <!-- Lo guardado en esta tanda (se vacía al salir de Registrar) -->
+        <div class="tarjeta" id="bloque-tanda" hidden>
+          <span class="etiqueta" id="tanda-titulo">Agregados ahora</span>
+          <div id="lista-tanda"></div>
+        </div>
+      </div>
       </form>
     </section>
 

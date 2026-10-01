@@ -24,7 +24,18 @@
   #bloque-valor-destino { order: 4; }
   #bloque-categoria { order: 5; }
   #bloque-fecha { order: 6; }
-  #btn-guardar { order: 7; }
+  #reg-acciones { order: 7; }
+
+  /* "Guardar y agregar otro" y la lista de lo que se lleva en la tanda */
+  #btn-guardar-otro { width: 100%; margin-top: var(--e2); font-weight: 600; }
+  #btn-guardar-otro:disabled { opacity: .6; }
+  #bloque-tanda { margin-top: var(--e3); }
+  .tanda-fila {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
+    padding: var(--e2) 0; border-top: 1px solid var(--divisor); font-size: var(--t-cuerpo);
+  }
+  .tanda-fila:first-child { border-top: none; }
+  .tanda-fila b { white-space: nowrap; }
 
   .grupo-tipos {
     display: grid; grid-template-columns: repeat(4, 1fr);
@@ -213,7 +224,7 @@
     #reg-volver   { grid-area: 1 / 1 / 2 / 3; justify-self: start; margin-bottom: var(--e2); }
     .col-form     { grid-area: 2 / 1 / 3 / 2; }
     .col-elegir   { grid-area: 2 / 2 / 4 / 3; }
-    #btn-guardar  { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e2); }
+    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); }
 
     /* --- Panel --- */
     /* El patrimonio y "este mes" son las dos cifras que uno viene a mirar:

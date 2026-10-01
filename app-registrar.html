@@ -264,8 +264,9 @@ function conectarRegistrar() {
   // suelto no daría ninguna de las dos cosas.
   $('form-registrar').addEventListener('submit', function (e) {
     e.preventDefault();
-    guardar();
+    guardar(false);
   });
+  $('btn-guardar-otro').onclick = function () { guardar(true); };
 
   // Buscador de categorías (solo visible cuando hay muchas). Enter elige la
   // primera que coincide en vez de guardar el movimiento a medio llenar.
@@ -367,7 +368,48 @@ function actualizarBloqueValorDestino() {
   }
 }
 
-function habilitarGuardar(v) { $('btn-guardar').disabled = !v; }
+function habilitarGuardar(v) {
+  $('btn-guardar').disabled = !v;
+  $('btn-guardar-otro').disabled = !v;
+}
+
+/* ------------------------------------------------------- Tanda ("agregar otro")
+   Para meter varias compras de una vez: "Guardar y agregar otro" guarda y deja
+   el formulario abierto con la misma cuenta, categoría y fecha. Lo guardado se
+   lista debajo para saber qué ya entró. La tanda se vacía al salir de Registrar. */
+var tanda = [];
+
+function renderTanda() {
+  var cont = $('lista-tanda');
+  cont.innerHTML = '';
+  $('bloque-tanda').hidden = tanda.length === 0;
+  if (!tanda.length) return;
+  $('tanda-titulo').textContent = 'Agregados ahora (' + tanda.length + ')';
+  tanda.slice().reverse().forEach(function (t) {
+    var f = document.createElement('div');
+    f.className = 'tanda-fila';
+    // textContent: categoría, cuenta y descripción vienen de la hoja o del usuario
+    var izq = document.createElement('span');
+    izq.textContent = t.categoria || t.tipo;
+    var sub = document.createElement('span');
+    sub.className = 'mini';
+    sub.textContent = t.cuenta + (t.descripcion ? ' · ' + t.descripcion : '') +
+      (t.pendiente ? ' · guardado sin conexión' : '');
+    izq.appendChild(sub);
+    var der = document.createElement('b');
+    der.textContent = fmtNativo(t.valor, monedaDe(t.cuenta));
+    f.appendChild(izq);
+    f.appendChild(der);
+    cont.appendChild(f);
+  });
+}
+
+/** Vacía la tanda (al salir de Registrar): la próxima visita empieza de cero. */
+function vaciarTanda() {
+  if (!tanda.length) return;
+  tanda = [];
+  renderTanda();
+}
 
 /* ------------------------------------------------------------- Validación
    El toast dice QUÉ falta; la clase .campo-error dice DÓNDE. Sin lo segundo,
@@ -398,7 +440,8 @@ function limpiarErrores() {
   });
 }
 
-function guardar() {
+function guardar(seguir) {
+  if ($('btn-guardar').disabled) return; // ya hay un guardado en curso
   var valor = parsearMonto($('inp-monto').value);
   var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
 
@@ -433,14 +476,21 @@ function guardar() {
   };
 
   // Limpia el formulario y sale de Registrar: se usa igual si se guardó en el
-  // servidor o si quedó en la cola del teléfono.
-  var terminar = function () {
+  // servidor o si quedó en la cola del teléfono. Con `seguir` (tanda) se queda
+  // en el formulario: cuenta, categoría, fecha y filtro de categorías intactos.
+  var terminar = function (pendiente) {
     $('inp-monto').value = '';
     $('inp-desc').value = '';
     $('inp-valor-destino').value = '';
-    $('cat-buscar').value = '';   // el filtro no debe sobrevivir al guardado
     limpiarErrores();
     localStorage.setItem('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
+    if (seguir === true) {
+      tanda.push(Object.assign({}, mov, { pendiente: !!pendiente }));
+      renderTanda();
+      $('inp-monto').focus();
+      return;
+    }
+    $('cat-buscar').value = '';   // el filtro no debe sobrevivir al guardado
     cerrarRegistrar(); // Registrar es una subvista: volver a donde estabas
   };
 
@@ -448,7 +498,7 @@ function guardar() {
   if (!hayRed()) {
     encolarMovimiento(mov);
     habilitarGuardar(true);
-    terminar();
+    terminar(true);
     toast('Sin conexión: guardado en el teléfono, se subirá solo', 'exito');
     return;
   }
@@ -475,7 +525,7 @@ function guardar() {
       // repetiría el error: se muestra y el usuario conserva lo que escribió.
       if (!hayRed()) {
         encolarMovimiento(mov);
-        terminar();
+        terminar(true);
         toast('Se fue la conexión: guardado en el teléfono, se subirá solo', 'exito');
       } else {
         toast(err && err.message ? err.message : 'Error de conexión', 'error');
