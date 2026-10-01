@@ -1,0 +1,307 @@
+<style>
+  /* =====================================================================
+     Finanzas App — VISTAS
+     Lo que solo tiene sentido dentro de UNA pantalla: su disposición, su hero,
+     sus filtros. Al final, el bloque de ESCRITORIO (>= 900px), que es el único
+     sitio donde se reorganiza el layout para aprovechar el ancho.
+     ===================================================================== */
+
+  /* ====================================================== Vista: Registrar
+     En móvil las .col se disuelven (display:contents) y `order` mantiene el
+     orden natural del formulario: tipos, monto, cuenta, destino, categoría,
+     fecha, guardar. En PC vuelven a ser dos columnas reales (bloque final). */
+  #vista-registrar.activa { display: flex; flex-direction: column; }
+  /* El <form> no pinta: solo aporta el Enter y la tecla de acción del teclado
+     móvil. display:contents lo saca del layout para que las .col y el botón de
+     guardar sigan siendo hijos de la vista a efectos de flex/grid. */
+  #form-registrar { display: contents; }
+  .col { display: contents; }
+  #reg-volver { order: 0; margin-bottom: var(--e3); align-self: flex-start; }
+  #grupo-tipos { order: 1; }
+  #bloque-monto { order: 2; }
+  #bloque-cuenta { order: 3; }
+  #bloque-transfer { order: 3; } /* reemplaza a bloque-cuenta en transferencias */
+  #bloque-valor-destino { order: 4; }
+  #bloque-categoria { order: 5; }
+  #bloque-fecha { order: 6; }
+  #reg-acciones { order: 7; }
+
+  /* "Guardar y agregar otro" y la lista de lo que se lleva en la tanda */
+  #btn-guardar-otro { width: 100%; margin-top: var(--e2); font-weight: 600; }
+  #btn-guardar-otro:disabled { opacity: .6; }
+  #bloque-tanda { margin-top: var(--e3); }
+  .tanda-fila {
+    display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
+    padding: var(--e2) 0; border-top: 1px solid var(--divisor); font-size: var(--t-cuerpo);
+  }
+  .tanda-fila:first-child { border-top: none; }
+  .tanda-fila b { white-space: nowrap; }
+
+  .grupo-tipos {
+    display: grid; grid-template-columns: repeat(4, 1fr);
+    gap: var(--e2); margin-bottom: var(--e3);
+  }
+
+  /* Buscador de categorías (aparece solo si hay muchas) */
+  #cat-buscar-wrap { margin-bottom: var(--e2); }
+  #cat-buscar { min-height: var(--alto-toque-min); }
+  #cat-vacio { padding: var(--e3) 0; }
+
+  /* Cuentas y categorías van en .chips-grilla (ver estilos-componentes.html):
+     fluyen y se ven TODAS. Antes había aquí un `nowrap; overflow-x:auto` global
+     que, al no estar dentro de ninguna media query, dejaba también el escritorio
+     con una tira de 449px de ancho para 1.316px de chips: había que arrastrar
+     para ver media lista teniendo 971px libres.
+
+     Única excepción, y solo en pantallas estrechas: las CUENTAS siguen en tira
+     horizontal. Sus nombres son largos ("Préstamo mamá") y en media columna se
+     cortarían; las categorías sí van en grilla porque son cortas. */
+  @media (max-width: 599px) {
+    #chips-cuenta.chips-grilla, #chips-transfer.chips-grilla {
+      display: flex; flex-wrap: nowrap; overflow-x: auto; padding-bottom: var(--e1);
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    #chips-cuenta::-webkit-scrollbar, #chips-transfer::-webkit-scrollbar { display: none; }
+    #chips-cuenta .chip, #chips-transfer .chip { flex: none; }
+  }
+  /* En Registrar el CTA es Guardar: el FAB estorba, se esconde (solo móvil) */
+  @media (max-width: 899px) {
+    body.en-registrar .nav-registrar { display: none; }
+  }
+
+  /* ========================================================== Vista: Panel */
+  /* Cabecera: apilada en móvil, dos columnas en PC (ver el bloque de escritorio) */
+  .panel-hero > .tarjeta { margin-bottom: var(--e3); }
+  .patrimonio { background: var(--primario); color: var(--sobre-color); border-color: transparent; }
+  .patrimonio .etiqueta { color: var(--sobre-primario); }
+  .patrimonio .cod-moneda { color: var(--sobre-primario); }
+  .patrimonio-desglose {
+    font-size: var(--t-nota); color: var(--sobre-primario);
+    margin-top: var(--e1); font-variant-numeric: tabular-nums;
+  }
+  .grid-cuentas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pad-fila); margin-bottom: var(--e3); }
+
+  /* =========================================== Vista: detalle de una cuenta */
+  #cd-volver { margin-bottom: var(--pad-fila); }
+  .cuenta-hero { border-top: var(--e1b) solid var(--color-cuenta, var(--primario)); }
+  .cuenta-hero .valor-grande { font-variant-numeric: tabular-nums; }
+  .cuenta-hero .mini, .cuenta-hero .equiv { margin-top: 3px; }
+  .acciones-cuenta { display: flex; gap: var(--e2); flex-wrap: wrap; margin-bottom: var(--e3); }
+  .acciones-cuenta .btn-mini { min-height: var(--alto-toque-min); }
+
+  /* ====================================================== Vista: Historial */
+  .filtros { padding: var(--pad-fila) var(--e3); }
+  /* Fila permanente: buscador + botón que despliega el resto */
+  .barra-buscar { display: flex; gap: var(--e2); align-items: center; }
+  .barra-buscar .campo-buscar { flex: 1; min-width: 0; }
+  #fil-buscar { min-height: var(--alto-toque-min); font-size: var(--t-boton); }
+  #fil-toggle { min-height: var(--alto-toque-min); flex: none; }
+  /* Panel plegable con los 4 selectores y el rango de fechas */
+  .fil-panel {
+    display: grid; grid-template-columns: 1fr 1fr; gap: var(--e2);
+    margin-top: var(--e2); padding-top: var(--e2); border-top: 1px solid var(--divisor);
+  }
+  .fil-panel select { min-height: var(--alto-toque-min); font-size: var(--t-lista); }
+  .fil-panel .fila-doble { grid-column: 1 / -1; }
+  /* Chips de lo que se está filtrando ahora mismo */
+  .fil-activos { display: flex; flex-wrap: wrap; gap: var(--gap-chip); align-items: center; margin-top: var(--e2); }
+  .chip-filtro {
+    display: inline-flex; align-items: center; gap: var(--e1);
+    min-height: var(--alto-min); padding: var(--e1) var(--e2) var(--e1) var(--e3);
+    border-radius: var(--radio-pildora); cursor: pointer;
+    border: 1.5px solid var(--primario); background: var(--acento-suave);
+    color: var(--acento); font: inherit; font-size: var(--t-nota); font-weight: 600;
+    max-width: 100%;
+  }
+  .chip-filtro .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip-filtro .ic { width: var(--ic-mini); height: var(--ic-mini); flex: none; opacity: .8; }
+  .chip-filtro:hover .ic { opacity: 1; }
+  .fil-activos .enlace { min-height: var(--alto-min); font-size: var(--t-nota); padding: 0 var(--e1); }
+  .hist-resumen {
+    font-size: var(--t-nota); color: var(--texto-suave); margin-top: var(--e2);
+    text-align: center; padding-top: var(--e0); font-variant-numeric: tabular-nums;
+  }
+  .hist-mas { text-align: center; padding: var(--e4) 0 var(--e2); }
+  .hist-mas .btn-secundario { min-width: var(--min-tarjeta); }
+  .hist-mas .mini { margin-top: var(--gap-chip); }
+
+  /* ======================================================== Vista: Ajustes
+     Dos niveles. En MÓVIL se ve una capa u otra: la clase `en-detalle` (la pone
+     mostrarGrupoAjustes) decide cuál. En PC las dos a la vez, en dos paneles. */
+  .grupo-ajustes { margin-bottom: var(--e5); }
+  .grupo-ajustes:last-child { margin-bottom: 0; }
+  #aj-tema .chip.activa, #aj-base-monedas .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave); color: var(--acento); font-weight: 600;
+  }
+  /* Botonera al pie de un grupo (agregar cuenta / agregar deuda) */
+  .acciones-grupo { display: flex; gap: var(--e2); flex-wrap: wrap; margin-top: var(--e3); }
+
+  /* Índice: una fila por grupo */
+  .aj-indice-item {
+    display: flex; align-items: center; gap: var(--e3); width: 100%;
+    background: var(--tarjeta); border: 1px solid var(--borde-tarjeta);
+    border-radius: var(--radio); box-shadow: var(--sombra-1);
+    padding: var(--e3) var(--pad-tarjeta); margin-bottom: var(--e2);
+    font: inherit; color: var(--texto); text-align: left; cursor: pointer;
+    transition: background-color var(--trans) ease, border-color var(--trans) ease;
+  }
+  .aj-indice-item .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--e0); }
+  .aj-indice-item .ai-txt b { font-size: var(--t-cuerpo); font-weight: 600; }
+  .aj-indice-item .ic { color: var(--texto-suave); flex: none; }
+  .aj-indice-item:hover { border-color: var(--borde); }
+  .aj-indice-item:active { transform: scale(.99); }
+
+  /* Móvil: capas. Sin grupo abierto se ve el índice; con grupo, el detalle. */
+  #vista-ajustes .ajustes-detalle { display: none; }
+  #vista-ajustes.en-detalle .ajustes-indice { display: none; }
+  #vista-ajustes.en-detalle .ajustes-detalle { display: block; animation: aparecer .18s ease both; }
+  #aj-volver { margin-bottom: var(--e3); }
+
+  /* =====================================================================
+     ESCRITORIO (>= 900px). Todo lo de aquí para abajo NO toca el celular:
+     la barra de abajo pasa a ser un menú lateral y el contenido se reparte
+     en columnas para aprovechar el ancho.
+     ===================================================================== */
+  @media (min-width: 900px) {
+
+    /* --- Menú lateral --- */
+    .nav-inferior {
+      top: 0; bottom: 0; right: auto; width: var(--ancho-nav);
+      flex-direction: column; justify-content: flex-start; gap: var(--e1);
+      padding: var(--pad-modal) var(--e3); border-top: none; border-right: 1px solid var(--borde-tarjeta);
+      box-shadow: none;
+    }
+    .marca {
+      display: flex; align-items: center; gap: var(--e2);
+      font-size: var(--t-subtitulo); font-weight: 700; color: var(--acento);
+      padding: var(--e2) var(--e3) var(--e4b);
+    }
+    /* El FAB deja de flotar: pasa a ser el botón primario del sidebar, arriba */
+    .nav-registrar {
+      position: static; width: 100%; height: auto; border-radius: var(--radio-chip);
+      min-height: var(--alto-toque); margin-bottom: var(--e4); padding: 0 var(--e3);
+      justify-content: flex-start; gap: var(--e3); box-shadow: none;
+    }
+    .nav-registrar .ic-nav { width: var(--ic-nav); height: var(--ic-nav); }
+    .nav-registrar span { display: inline; font-size: var(--t-enlace); font-weight: 700; }
+    .nav-btn {
+      flex: none; max-width: none; width: 100%; min-height: var(--alto-toque);
+      flex-direction: row; justify-content: flex-start; gap: var(--e3);
+      padding: 0 var(--e3); border-radius: var(--radio-chip);
+    }
+    .nav-btn span { font-size: var(--t-enlace); }
+    .nav-btn:hover { background: var(--suave); }
+    .nav-btn.activa { background: var(--acento-suave); }
+
+    /* --- Contenido --- */
+    .contenedor {
+      margin-left: var(--ancho-nav); max-width: var(--ancho-contenido);
+      padding: var(--e4b) var(--e5b) var(--e7);
+    }
+    header { padding: var(--e1) var(--e0) var(--pad-modal); }
+    h1 { font-size: var(--t-titulo-pc); }
+
+    /* --- Registrar: "Volver" arriba a lo ancho y luego dos columnas ---
+       #reg-volver es un hijo directo del grid: sin grid-column ocuparía una
+       celda y descuadraría las columnas (col1 se salía a la derecha). */
+    /* Columnas DESIGUALES a propósito: la izquierda son campos de formulario y
+       con 380px va sobrada, mientras que la derecha son chips y cada píxel de
+       ancho que gana es una fila de alto que se ahorra. Con 1fr 1fr la columna
+       de chips se quedaba en 2 columnas y el formulario no cabía en pantalla. */
+    #vista-registrar.activa {
+      display: grid; grid-template-columns: minmax(300px, 380px) 1fr;
+      gap: 0 var(--e4b); align-items: start;
+    }
+    /* min-width:0 — sin esto los chips en scroll horizontal (nowrap) inflan el
+       ancho mínimo del track y la columna se desborda a la derecha. */
+    .col { display: flex; flex-direction: column; min-width: 0; } /* deja de disolverse */
+
+    /* Colocación explícita. Guardar va en la columna IZQUIERDA, pegado a los
+       campos, y la derecha (que es más alta) ocupa las dos filas. Con el botón
+       en una fila propia a lo ancho quedaban ~290px de hueco muerto entre la
+       descripción y el botón, porque la fila la estiraba la columna de chips.
+       En el DOM sigue yendo de último: así el tabulador llega a él al final. */
+    #reg-volver   { grid-area: 1 / 1 / 2 / 3; justify-self: start; margin-bottom: var(--e2); }
+    .col-form     { grid-area: 2 / 1 / 3 / 2; }
+    .col-elegir   { grid-area: 2 / 2 / 4 / 3; }
+    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); }
+
+    /* --- Panel --- */
+    /* El patrimonio y "este mes" son las dos cifras que uno viene a mirar:
+       lado a lado y a la misma altura. Antes el patrimonio era una franja de
+       971px para un solo número y "este mes" quedaba 700px más abajo. */
+    .panel-hero {
+      display: grid; grid-template-columns: 1fr 1fr; gap: var(--e3);
+      align-items: stretch;
+    }
+    .panel-hero > .tarjeta { margin-bottom: var(--e3); min-width: 0; }
+    /* Dentro del hero la tarjeta es media pantalla, así que los 4 datos van 2x2:
+       en una sola fila, cifras como "$ 1.218.295,49" se parten en dos líneas. */
+    .panel-hero .resumen-mes { grid-template-columns: repeat(2, 1fr); }
+    .valor-grande { font-size: var(--t-cifra-grande-pc); }
+    .grid-cuentas { grid-template-columns: repeat(auto-fit, minmax(var(--min-tarjeta), 1fr)); }
+    .tarjeta-cuenta .saldo { font-size: var(--t-cifra-pc); }
+    .resumen-mes { grid-template-columns: repeat(4, 1fr); }
+    .resumen-mes.dos { grid-template-columns: repeat(2, 1fr); }
+    .resumen-mes b { font-size: var(--t-cifra-pc); }
+    .insights { grid-template-columns: repeat(4, 1fr); }
+    .lienzo.alto { height: var(--alto-lienzo-alto-pc); }
+    .graficas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--e4); }
+    /* min-width:0 — sin esto el canvas de Chart.js (300px propios) impide que la
+       columna encoja y la página termina con scroll horizontal. */
+    .graficas .tarjeta { margin-bottom: 0; min-width: 0; }
+    .lienzo { height: var(--alto-lienzo-pc); min-width: 0; }
+
+    /* --- Ajustes: los dos paneles a la vez --- */
+    .ajustes-layout {
+      display: grid; grid-template-columns: 260px 1fr; gap: var(--e5);
+      align-items: start;
+    }
+    /* En PC el índice es un menú permanente: siempre visible, y el detalle
+       también (por eso se anula la lógica de capas de móvil). */
+    #vista-ajustes .ajustes-indice,
+    #vista-ajustes.en-detalle .ajustes-indice,
+    #vista-ajustes .ajustes-detalle,
+    #vista-ajustes.en-detalle .ajustes-detalle { display: block; }
+    #aj-volver { display: none; }          /* el índice ya está a la vista */
+    .aj-indice-item {
+      background: none; border-color: transparent; box-shadow: none;
+      padding: var(--pad-fila) var(--e3); margin-bottom: var(--e1);
+      border-radius: var(--radio-chip);
+    }
+    .aj-indice-item .mini { display: none; } /* el subtítulo sobra en un menú */
+    .aj-indice-item:hover { background: var(--suave); border-color: transparent; }
+    .aj-indice-item.activa {
+      background: var(--acento-suave); color: var(--acento); border-color: transparent;
+    }
+    .aj-indice-item.activa .ic, .aj-indice-item.activa b { color: var(--acento); }
+    .aj-indice-item .ic:last-child { display: none; } /* el chevron no aporta aquí */
+
+    /* --- Historial: más densidad, los 4 selectores en una fila --- */
+    .fil-panel { grid-template-columns: repeat(4, 1fr); }
+    .fil-panel .fila-doble { grid-column: 1 / -1; max-width: 520px; }
+    .mov { padding: var(--pad-fila) var(--e4); min-height: var(--alto-toque); }
+    .mov .desc { font-size: var(--t-cifra-chica); }
+    .mov + .mov { margin-bottom: var(--e1); }
+
+    /* --- Registrar en ventanas BAJAS ---
+       El marco de Apps Script se come ~45px arriba, así que en un portátil (o a
+       125% de escala) quedan ~650px útiles y la última fila de categorías caía
+       justo debajo del borde. Aquí se aprieta el aire —sin bajar los objetivos
+       táctiles de 40px— y se retira "Volver", que en PC es redundante: el menú
+       lateral está siempre a la vista y Escape también cierra. */
+    @media (max-height: 720px) {
+      #vista-registrar.activa #reg-volver { display: none; }
+      #vista-registrar.activa .tarjeta { padding: var(--pad-fila) var(--e3); margin-bottom: var(--e2); }
+      #vista-registrar.activa .grupo-tipos { margin-bottom: var(--e2); }
+      #vista-registrar.activa .btn-tipo { min-height: var(--alto-toque); }
+      #vista-registrar.activa .chips-grilla .chip { min-height: var(--alto-chico); }
+      #vista-registrar.activa .chips-grupo + .chips-grupo { margin-top: var(--e1); }
+    }
+
+    /* --- Modal centrado, no pegado abajo --- */
+    .modal-fondo { align-items: center; }
+    .modal { border-radius: var(--radio); max-width: var(--ancho-modal-pc); padding: var(--e5); }
+    @keyframes subirModal { from { transform: translateY(var(--e3)) scale(.98); opacity: .6; } }
+  }
+</style>

@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 preview/preview.html
 preview/cap_*.png
+
+# capturas y marco de prueba: se regeneran, no van al repo
+preview/_marco.html

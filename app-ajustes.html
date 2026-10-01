@@ -1,0 +1,669 @@
+<script>
+/* =====================================================================
+   Finanzas App — Presupuestos, categorías, tema y la vista de Ajustes.
+   ===================================================================== */
+
+// ============================================================ PRESUPUESTOS
+/** Gastos por categoría del mes EN CURSO (último de los 12 del resumen). */
+function gastoMesActualPorCategoria() {
+  var meses = datos.resumen.meses;
+  return meses[meses.length - 1].gastosPorCategoria || {};
+}
+
+/** Tarjeta del Panel: una barra de progreso por categoría presupuestada. */
+function renderPresupuestos() {
+  var cont = $('lista-presup');
+  cont.innerHTML = '';
+  var lista = (datos.presupuestos || []).slice();
+  var verTodos = $('presup-vertodos');
+  $('presup-vacio').hidden = lista.length > 0;
+  if (!lista.length) { verTodos.hidden = true; return; }
+
+  var g = gastoMesActualPorCategoria();
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  // Los más apretados arriba: es lo que interesa vigilar
+  lista.sort(function (a, b) {
+    return (g[b.categoria] || 0) / b.tope - (g[a.categoria] || 0) / a.tope;
+  });
+
+  // El Panel muestra solo el top 3 (lo que urge vigilar); "Ver todos" despliega
+  // el resto sin salir del Panel. La gestión completa vive en Ajustes.
+  var TOP = 3;
+  var visibles = presupExpandido ? lista : lista.slice(0, TOP);
+  verTodos.hidden = lista.length <= TOP;
+  verTodos.textContent = presupExpandido ? 'Ver menos' : 'Ver todos (' + lista.length + ')';
+
+  visibles.forEach(function (p) {
+    var gastado = g[p.categoria] || 0;
+    var frac = gastado / p.tope;
+
+    var fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'fila-cat fila-presup';
+    fila.title = frac > 1
+      ? 'Te pasaste por ' + fmtBase(gastado - p.tope) + ' — toca para ver los movimientos'
+      : 'Quedan ' + fmtBase(p.tope - gastado) + ' este mes — toca para ver los movimientos';
+    // El presupuesto es del mes en curso: el historial se filtra a ese mes
+    fila.onclick = function () { irACategoria(p.categoria, datos.hoy.substring(0, 7)); };
+
+    var info = document.createElement('div');
+    info.className = 'fila-cat-info';
+    var nombre = document.createElement('span');
+    nombre.textContent = (iconos[p.categoria] || '🏷️') + ' ' + p.categoria;
+    var monto = document.createElement('span');
+    monto.className = 'monto';
+    monto.textContent = fmtBase(gastado) + ' / ' + fmtBase(p.tope) + ' · ' + Math.round(frac * 100) + '%';
+    info.appendChild(nombre);
+    info.appendChild(monto);
+
+    var barra = document.createElement('div');
+    barra.className = 'barra';
+    var relleno = document.createElement('div');
+    // Verde tranquilo, ámbar cerca del tope (80%), rojo pasado
+    relleno.className = 'relleno ' + (frac > 1 ? 'pasado' : (frac >= 0.8 ? 'alerta' : 'ok'));
+    relleno.style.width = Math.min(frac, 1) * 100 + '%';
+    barra.appendChild(relleno);
+
+    fila.appendChild(info);
+    fila.appendChild(barra);
+    cont.appendChild(fila);
+  });
+}
+
+/** Tope mensual de una categoría (0 = no tiene). */
+function topeDe(categoria) {
+  var p = (datos.presupuestos || []).filter(function (x) { return x.categoria === categoria; })[0];
+  return p ? p.tope : 0;
+}
+
+/**
+ * Ajustes → Categorías: resumen de los topes que existen, con lo gastado del
+ * mes. Tocar uno abre la categoría (allí se cambia o se quita el tope): un solo
+ * sitio para ponerlo y para verlo.
+ */
+function renderAjustesTopes() {
+  var cont = $('aj-topes-lista');
+  cont.innerHTML = '';
+  var lista = (datos.presupuestos || []).slice();
+  if (!lista.length) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('grafica') +
+      'Ninguna categoría tiene tope todavía</div>';
+    return;
+  }
+  var g = gastoMesActualPorCategoria();
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  lista.sort(function (a, b) { return (g[b.categoria] || 0) / b.tope - (g[a.categoria] || 0) / a.tope; });
+
+  lista.forEach(function (p) {
+    var gastado = g[p.categoria] || 0;
+    var it = document.createElement('button');
+    it.type = 'button'; it.className = 'aj-item';
+    var em = document.createElement('span');
+    em.className = 'ai-emoji'; em.textContent = iconos[p.categoria] || '🏷️';
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b'); nom.textContent = p.categoria;
+    var sub = document.createElement('span');
+    sub.className = 'ai-saldo';
+    sub.textContent = fmtBase(gastado) + ' de ' + fmtBase(p.tope) +
+      ' · ' + Math.round(gastado / p.tope * 100) + '%';
+    txt.appendChild(nom); txt.appendChild(sub);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () {
+      var c = datos.categorias.filter(function (x) { return x.categoria === p.categoria; })[0];
+      if (c) abrirCatEditor(c);
+    };
+    cont.appendChild(it);
+  });
+}
+
+// ============================================================ CATEGORÍAS
+/** Grilla curada de emojis para el picker (categorías = único lugar de emojis). */
+var EMOJIS_CAT = ['🍔','🛒','☕','🍺','🍎','🥑','🎬','🎮','🎵','📚','🎓','💼','🏠','💡','💧','🔥',
+  '🚌','🚗','⛽','✈️','🏥','💊','💪','⚽','👕','👟','🎁','💇','🐶','🐱','🌱','🧴','📱','💻','🔌',
+  '💰','📈','🏦','💳','🎲','🧾','🍕','🛠️','🎨','🌐','☂️','🏷️','⚖️'];
+var catEditNombre = null;   // nombre de la categoría en edición (null = nueva)
+var catEditEmoji = '🏷️';   // emoji elegido en el picker
+
+function renderEmojiPicker() {
+  var cont = $('cat-emoji-grid');
+  cont.innerHTML = '';
+  EMOJIS_CAT.forEach(function (e) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = e;
+    b.className = (e === catEditEmoji) ? 'activa' : '';
+    b.onclick = function () { catEditEmoji = e; renderEmojiPicker(); };
+    cont.appendChild(b);
+  });
+}
+
+/** Abre el editor de una categoría (o de una nueva si `c` es null). */
+function abrirCatEditor(c) {
+  catEditNombre = c ? c.categoria : null;
+  catEditEmoji = c ? (c.icono || '🏷️') : '🏷️';
+  $('cat-titulo').textContent = c ? 'Editar categoría' : 'Nueva categoría';
+  $('cat-nombre').value = c ? c.categoria : '';
+  $('cat-tipo').value = c ? (c.tipoSugerido || '') : '';
+  var ocultas = datos.catsOcultas || [];
+  $('cat-oculta').checked = c ? ocultas.indexOf(c.categoria) >= 0 : false;
+  $('cat-oculta-fila').hidden = !c; // ocultar solo aplica a las que ya existen
+  // Eliminar solo si existe y no tiene movimientos (el servidor revalida)
+  $('cat-eliminar').hidden = !(c && c.enUso === false);
+  // Tope mensual: se edita aquí desde v11 (antes había un modal aparte)
+  var tope = c ? topeDe(c.categoria) : 0;
+  $('cat-tope').value = tope > 0 ? montoATexto(tope) : '';
+  $('cat-tope-simbolo').textContent = simboloDe(monedaBase);
+  renderEmojiPicker();
+  $('modal-cat').hidden = false;
+  $('cat-nombre').focus();
+}
+function cerrarCatEditor() { $('modal-cat').hidden = true; catEditNombre = null; }
+
+/** Aplica el estado oculto/visible de una categoría (guarda la lista completa). */
+function fijarCatOculta(nombre, oculta, alTerminar) {
+  var lista = (datos.catsOcultas || []).slice();
+  var i = lista.indexOf(nombre);
+  if (oculta && i < 0) lista.push(nombre);
+  else if (!oculta && i >= 0) lista.splice(i, 1);
+  else { if (alTerminar) alTerminar(true); return; } // sin cambio
+  llamar('guardarCatsOcultas', [lista], alTerminar);
+}
+
+function guardarCatEditor() {
+  var nombre = $('cat-nombre').value.trim();
+  if (!nombre) return toast('Escribe el nombre de la categoría', 'error');
+  var tipo = $('cat-tipo').value;
+  var oculta = $('cat-oculta').checked;
+  // El tope se escribe en la moneda base; el servidor lo guarda en COP.
+  var tope = parsearMonto($('cat-tope').value);
+  if (isNaN(tope) || tope < 0) tope = 0;
+  var topeCOP = tope > 0 ? Math.round(tope * tasaBase()) : 0;
+
+  if (!catEditNombre) {
+    // Nueva: crear y, si se marcó oculta o con tope, aplicarlo después
+    cerrarCatEditor();
+    llamar('agregarCategoria', [{ categoria: nombre, tipoSugerido: tipo, icono: catEditEmoji }],
+      function (ok) {
+        if (!ok) return;
+        if (oculta) fijarCatOculta(nombre, true);
+        if (topeCOP > 0) llamar('guardarPresupuesto', [nombre, topeCOP]);
+      });
+    return;
+  }
+
+  var c = datos.categorias.filter(function (x) { return x.categoria === catEditNombre; })[0];
+  var cambiaNombre = nombre !== catEditNombre;
+  var viejoNombre = catEditNombre;
+  var yaOculta = (datos.catsOcultas || []).indexOf(viejoNombre) >= 0;
+  var topeAntes = Math.round(topeDe(viejoNombre));
+
+  var aplicar = function () {
+    cerrarCatEditor();
+    llamar('editarCategoria', [viejoNombre, { categoria: nombre, icono: catEditEmoji, tipoSugerido: tipo }],
+      function (ok) {
+        // El servidor arrastra el rename a Presupuestos y a CatsOcultas, así que
+        // aquí solo queda aplicar lo que cambió en este modal.
+        if (!ok) return;
+        if (oculta !== yaOculta) fijarCatOculta(nombre, oculta);
+        // Se compara con lo que había: sin esto, guardar sin tocar el tope
+        // mandaría una escritura de más a la hoja en cada edición.
+        if (topeCOP !== topeAntes) llamar('guardarPresupuesto', [nombre, topeCOP]);
+      });
+  };
+
+  // Renombrar una categoría en uso toca todo el historial: vale un aviso
+  if (cambiaNombre && c && c.enUso) {
+    confirmar('"' + viejoNombre + '" pasará a llamarse "' + nombre +
+      '" en todo el historial, y su presupuesto se va con ella.',
+      { titulo: 'Renombrar categoría', aceptar: 'Renombrar' },
+      function (si) { if (si) aplicar(); });
+  } else {
+    aplicar();
+  }
+}
+
+function eliminarCatEditor() {
+  if (!catEditNombre) return;
+  var n = catEditNombre;
+  confirmar('Se eliminará la categoría "' + n + '". No tiene movimientos, así que no se pierde nada.',
+    { titulo: 'Eliminar categoría', aceptar: 'Eliminar', peligro: true }, function (si) {
+      if (!si) return;
+      cerrarCatEditor();
+      llamar('eliminarCategoria', [n]);
+    });
+}
+
+// ============================================================ TEMA (claro/oscuro/auto)
+/* El modo guardado puede ser 'claro', 'oscuro' o 'auto' (sigue al sistema).
+   temaEfectivo resuelve 'auto' al tema real del momento. */
+function temaEfectivo(modo) {
+  if (modo === 'auto') return (window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches) ? 'oscuro' : 'claro';
+  return modo === 'oscuro' ? 'oscuro' : 'claro';
+}
+function aplicarTema(modo) {
+  var ef = temaEfectivo(modo);
+  document.documentElement.setAttribute('data-tema', ef);
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = ef === 'oscuro' ? '#171B21' : '#1A73E8';
+  if (typeof Chart !== 'undefined') {
+    // Sin esto, los textos de Chart.js quedan ilegibles al cambiar de tema
+    Chart.defaults.color = ef === 'oscuro' ? '#BDC1C6' : '#5F6368';
+    Chart.defaults.borderColor = ef === 'oscuro' ? 'rgba(255,255,255,.09)' : 'rgba(0,0,0,.08)';
+  }
+  // Marcar el chip activo en Ajustes → Apariencia (clase + aria a la vez)
+  document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
+    marcarActivo(b, b.dataset.tema === modo);
+  });
+  if (datos) {
+    // Los colores de las gráficas salen del tema: hay que redibujarlas aunque
+    // los datos no hayan cambiado, así que se olvidan las firmas.
+    olvidarFirmas();
+    renderGraficas();
+    renderEvolucion();
+    if (cuentaDetalle) renderCuentaDetalle();
+  }
+}
+function elegirTema(modo) {
+  localStorage.setItem('tema', modo);
+  aplicarTema(modo);
+}
+
+// ============================================================ AJUSTES
+var VERSION = '11.0';
+var CHANGELOG = 'Orden. Al registrar ya se ven todas las cuentas y categorías de una, ' +
+  'sin arrastrar de lado. Ajustes pasó de una lista larguísima a secciones. El Panel ' +
+  'muestra lo de hoy y Evolución lo del tiempo, sin repetirse. Y el Historial filtra ' +
+  'con una barra que no se come media pantalla.';
+// Aviso honesto sobre el límite: la app vive dentro de Google Apps Script, que
+// no permite Service Workers, así que ABRIRLA siempre necesita internet.
+var NOTA_OFFLINE = 'Para abrir la app necesitas internet (es una app de Google). ' +
+  'Pero si se cae la señal mientras la usas, lo que registres se guarda aquí y se sube al reconectar.';
+
+var MONEDAS_UI = ['COP', 'USD', 'EUR', 'GBP', 'BRL', 'MXN', 'ARS', 'CLP', 'PEN', 'CAD', 'CHF', 'JPY'];
+
+/* =====================================================================
+   AJUSTES EN DOS NIVELES
+   Antes era una sola página de 3.400px y 52 controles: para cambiar el tema
+   había que bajar por 11 tasas de cambio y 11 categorías. Ahora hay un índice
+   de grupos y el detalle de uno.
+     · Móvil: se ve el índice O el detalle (capas), con "← Ajustes" para volver.
+     · PC:    los dos a la vez, índice a la izquierda.
+   Cada grupo tiene su hash (#ajustes/cuentas), así que se puede enlazar desde
+   cualquier sitio y el botón atrás del navegador funciona.
+   ===================================================================== */
+
+var GRUPOS_AJUSTES = [
+  { id: 'cuentas',     icono: 'tarjeta-cred', titulo: 'Cuentas y deudas',   sub: 'Agregar, editar, cuadrar y ordenar' },
+  { id: 'categorias',  icono: 'lista',        titulo: 'Categorías',         sub: 'Nombres, emojis y topes mensuales' },
+  { id: 'monedas',     icono: 'grafica',      titulo: 'Monedas y tasas',    sub: 'En qué moneda lees todo y a qué cambio' },
+  { id: 'recurrentes', icono: 'calendario',   titulo: 'Cada mes',           sub: 'Lo que se registra solo (arriendo, gym…)' },
+  { id: 'apariencia',  icono: 'luna',         titulo: 'Apariencia',         sub: 'Claro, oscuro o automático' },
+  { id: 'datos',       icono: 'nube-subir',   titulo: 'Datos y respaldo',   sub: 'Abrir la hoja y descargar el CSV' },
+  { id: 'acerca',      icono: 'ajustes',      titulo: 'Acerca de',          sub: 'Versión y novedades' }
+];
+
+/** Grupo abierto (null = índice; en PC nunca es null, se abre el primero). */
+var grupoAjustes = null;
+
+function esGrupoAjustes(id) {
+  return GRUPOS_AJUSTES.some(function (g) { return g.id === id; });
+}
+
+/** Pinta la vista de Ajustes completa (índice + el detalle que toque). */
+function renderAjustes() {
+  if (!datos) return;
+  renderAjustesIndice();
+  renderAjustesMoneda();
+  renderAjustesTasas();
+  renderAjustesCuentas();
+  renderAjustesCats();
+  renderAjustesTopes();
+  renderAjustesRecurrentes();
+  renderAjustesTema();
+  if (datos.hojaUrl) $('aj-hoja').href = datos.hojaUrl;
+  // El CSV sale de la propia hoja (URL de export): usa la sesión de Google que
+  // ya tienes abierta, así que no hace falta pedir permisos nuevos a la app.
+  var elCsv = $('aj-csv');
+  elCsv.hidden = !datos.csvUrl;
+  if (datos.csvUrl) elCsv.href = datos.csvUrl;
+  $('aj-version').textContent = 'Versión ' + VERSION;
+  $('aj-changelog').textContent = CHANGELOG;
+  $('aj-offline').textContent = NOTA_OFFLINE;
+  mostrarGrupoAjustes(grupoAjustes);
+}
+
+/** El índice: una fila por grupo, con icono, título y subtítulo. */
+function renderAjustesIndice() {
+  var cont = $('aj-indice');
+  cont.innerHTML = '';
+  GRUPOS_AJUSTES.forEach(function (g) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'aj-indice-item';
+    b.dataset.grupo = g.id;
+    b.innerHTML = icono(g.icono) +
+      '<span class="ai-txt"><b></b><span class="mini"></span></span>' +
+      icono('chevron-der');
+    b.querySelector('b').textContent = g.titulo;
+    b.querySelector('.mini').textContent = g.sub;
+    b.onclick = function () { location.hash = '#ajustes/' + g.id; };
+    cont.appendChild(b);
+  });
+}
+
+/**
+ * Muestra un grupo (o el índice si `id` es null y estamos en móvil).
+ * En PC el índice siempre se ve, así que sin grupo se abre el primero.
+ */
+function mostrarGrupoAjustes(id) {
+  if (!esGrupoAjustes(id)) id = esEscritorio() ? GRUPOS_AJUSTES[0].id : null;
+  grupoAjustes = id;
+
+  GRUPOS_AJUSTES.forEach(function (g) {
+    var el = $('aj-g-' + g.id);
+    if (el) el.hidden = (g.id !== id);
+  });
+  document.querySelectorAll('.aj-indice-item').forEach(function (b) {
+    marcarActivo(b, b.dataset.grupo === id);
+  });
+  // La clase decide qué capa se ve en móvil (en PC se ven las dos)
+  $('vista-ajustes').classList.toggle('en-detalle', !!id);
+  var g = GRUPOS_AJUSTES.filter(function (x) { return x.id === id; })[0];
+  $('titulo-vista').textContent = (id && !esEscritorio()) ? g.titulo : 'Ajustes';
+  if ($('vista-ajustes').classList.contains('activa')) window.scrollTo(0, 0);
+}
+
+/**
+ * Vuelve al índice (móvil; en PC el índice ya se ve y el botón está oculto).
+ *
+ * Va al índice de forma EXPLÍCITA, no con history.back(): si llegaste a este
+ * grupo desde otro —pasa en PC, donde el índice es un menú— "atrás" te devolvía
+ * al grupo anterior en vez de al índice. Con replaceState tampoco se llena el
+ * historial de pasos intermedios, así que el atrás del navegador sigue sacándote
+ * de Ajustes de una.
+ */
+function cerrarGrupoAjustes() {
+  history.replaceState(null, '', location.pathname + location.search + '#ajustes');
+  mostrarGrupoAjustes(null);
+}
+
+/** Chips de tema, con su aria-pressed. */
+function renderAjustesTema() {
+  var actual = localStorage.getItem('tema') || 'auto';
+  document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
+    marcarActivo(b, b.dataset.tema === actual);
+  });
+}
+
+/** Selector de moneda base: un chip por moneda (código + símbolo). */
+function renderAjustesMoneda() {
+  var cont = $('aj-base-monedas');
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip' + (m === monedaBase ? ' activa' : '');
+    b.textContent = m + ' ' + simboloDe(m);
+    b.onclick = function () {
+      if (m === monedaBase) return;
+      llamar('guardarMonedaBase', [m]);
+    };
+    cont.appendChild(b);
+  });
+}
+
+/** Tabla de tasas: valor en uso, badge (auto/manual/sin tasa) y editar la manual. */
+function renderAjustesTasas() {
+  var cont = $('aj-tasas-lista');
+  cont.innerHTML = '';
+  MONEDAS_UI.forEach(function (m) {
+    if (m === 'COP') return; // COP es el pivote, no tiene tasa a sí mismo
+    var t = (datos.tasas || {})[m] || {};
+    var fila = document.createElement('div');
+    fila.className = 'tasa-fila';
+
+    var par = document.createElement('span');
+    par.className = 'tf-par'; par.textContent = m;
+
+    var val = document.createElement('span');
+    val.className = 'tf-val';
+    val.textContent = (t.tasa > 0) ? ('1 ' + m + ' = ' + fmtNativo(t.tasa, 'COP')) : 'sin tasa';
+
+    var badge = document.createElement('span');
+    if (t.sinTasa || !(t.tasa > 0)) { badge.className = 'tf-badge sintasa'; badge.textContent = 'sin tasa'; }
+    else if (t.esManual) { badge.className = 'tf-badge manual'; badge.textContent = 'manual'; }
+    else { badge.className = 'tf-badge'; badge.textContent = 'auto'; }
+
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'btn-mini'; btn.innerHTML = icono('lapiz');
+    btn.title = 'Editar la tasa manual de respaldo';
+    btn.onclick = function () {
+      pedirTexto('Se usa solo si la tasa automática de Google Finance falla.',
+        {
+          titulo: 'Tasa manual de ' + m,
+          etiqueta: '1 ' + m + ' en COP',
+          valor: t.tasa > 0 ? montoATexto(t.tasa) : '',
+          numerico: true
+        },
+        function (v) {
+          if (v === null) return;
+          var n = parsearMonto(v);
+          if (!(n > 0)) return toast('Escribe un número mayor que cero', 'error');
+          llamar('guardarTasaManual', [m, n]);
+        });
+    };
+
+    fila.appendChild(par); fila.appendChild(val); fila.appendChild(badge); fila.appendChild(btn);
+    cont.appendChild(fila);
+  });
+  $('aj-tasas-nota').textContent = 'Tasas a COP · actualizadas al abrir la app. ' +
+    'La automática viene de Google Finance; la manual es el respaldo editable.';
+}
+
+/** Lista de cuentas: tocar abre el editor (modal de conciliar, con edición abierta). */
+function renderAjustesCuentas() {
+  var cont = $('aj-cuentas-lista');
+  cont.innerHTML = '';
+  datos.cuentas.forEach(function (c) {
+    var it = document.createElement('button');
+    it.type = 'button'; it.className = 'aj-item';
+    var punto = document.createElement('span');
+    punto.className = 'punto'; punto.style.background = c.color;
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b'); nom.textContent = c.cuenta;
+    var sal = document.createElement('span');
+    sal.className = 'ai-saldo';
+    sal.textContent = fmtNativo(c.saldo, c.moneda) + (c.tipo === 'Deuda' ? ' · deuda' : '') +
+      (c.moneda !== 'COP' ? ' · ' + c.moneda : '');
+    txt.appendChild(nom); txt.appendChild(sal);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(punto); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () { abrirAjuste(c); $('si-bloque').hidden = false; };
+    cont.appendChild(it);
+  });
+}
+
+/* ------------------------------------------------ Movimientos recurrentes
+   Lo que se repite cada mes. El servidor los crea al abrir la app (una sola vez
+   por mes, ver generarRecurrentes_); aquí solo se administran. */
+var recurEditando = null;  // id del recurrente abierto (null = nuevo)
+var recurTipoSel = 'Gasto';
+
+function renderAjustesRecurrentes() {
+  var cont = $('aj-recur-lista');
+  cont.innerHTML = '';
+  var lista = datos.recurrentes || [];
+  if (!lista.length) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('calendario') +
+      'Nada configurado todavía</div>';
+    return;
+  }
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  lista.forEach(function (r) {
+    var it = document.createElement('button');
+    it.type = 'button';
+    it.className = 'aj-item' + (r.activo ? '' : ' oculta');
+    var em = document.createElement('span');
+    em.className = 'ai-emoji';
+    em.textContent = iconos[r.categoria] || (r.tipo === 'Ingreso' ? '💰' : '🏷️');
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b');
+    nom.textContent = r.descripcion || r.categoria || r.tipo;
+    var sub = document.createElement('span');
+    sub.className = 'ai-saldo';
+    sub.textContent = 'Día ' + r.dia + ' · ' + fmtNativo(r.valor, monedaDe(r.cuenta)) +
+      ' · ' + r.cuenta + (r.activo ? '' : ' · apagado');
+    txt.appendChild(nom); txt.appendChild(sub);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () { abrirRecurEditor(r); };
+    cont.appendChild(it);
+  });
+}
+
+function abrirRecurEditor(r) {
+  recurEditando = r ? r.id : null;
+  recurTipoSel = r ? r.tipo : 'Gasto';
+  $('recur-titulo').textContent = r ? 'Editar recurrente' : 'Nuevo cada mes';
+  $('recur-desc').value = r ? r.descripcion : '';
+  $('recur-valor').value = r ? montoATexto(r.valor) : '';
+  $('recur-dia').value = r ? r.dia : 1;
+  $('recur-activo').checked = r ? r.activo : true;
+  $('recur-eliminar').hidden = !r;
+
+  llenarSelect($('recur-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
+  llenarSelect($('recur-cat'), datos.categorias.map(function (c) { return c.categoria; }), '— sin categoría —');
+  $('recur-cuenta').value = r ? r.cuenta : (localStorage.getItem('ultimaCuenta') || '');
+  $('recur-cat').value = r ? r.categoria : '';
+  pintarRecurTipo();
+  $('modal-recur').hidden = false;
+  $('recur-desc').focus();
+}
+function cerrarRecurEditor() { $('modal-recur').hidden = true; recurEditando = null; }
+
+function pintarRecurTipo() {
+  document.querySelectorAll('#recur-tipos .chip').forEach(function (b) {
+    b.classList.toggle('activa', b.dataset.rtipo === recurTipoSel);
+  });
+  // El símbolo del campo va en la moneda de la cuenta elegida
+  $('recur-simbolo').textContent = simboloDe(monedaDe($('recur-cuenta').value));
+}
+
+function guardarRecurEditor() {
+  var desc = $('recur-desc').value.trim();
+  var valor = parsearMonto($('recur-valor').value);
+  var cuenta = $('recur-cuenta').value;
+  if (!desc) return toast('Escribe una descripción', 'error');
+  if (!(valor > 0)) return toast('Escribe un monto mayor que cero', 'error');
+  if (!cuenta) return toast('Elige la cuenta', 'error');
+  var cat = $('recur-cat').value;
+  if (!cat) return toast('Elige una categoría', 'error');
+
+  var r = {
+    id: recurEditando || '',
+    activo: $('recur-activo').checked,
+    dia: Number($('recur-dia').value) || 1,
+    tipo: recurTipoSel,
+    cuenta: cuenta,
+    cuentaDestino: '',
+    categoria: cat,
+    descripcion: desc,
+    valor: valor
+  };
+  cerrarRecurEditor();
+  llamar('guardarRecurrente', [r]);
+}
+
+function eliminarRecurEditor() {
+  if (!recurEditando) return;
+  var id = recurEditando;
+  confirmar('Dejará de registrarse cada mes. Los movimientos que ya creó se quedan en el historial.',
+    { titulo: 'Eliminar recurrente', aceptar: 'Eliminar', peligro: true }, function (si) {
+      if (!si) return;
+      cerrarRecurEditor();
+      llamar('eliminarRecurrente', [id]);
+    });
+}
+
+/** Lista de categorías: tocar abre el editor (renombrar, emoji, ocultar, eliminar). */
+function renderAjustesCats() {
+  var cont = $('aj-cats-lista');
+  cont.innerHTML = '';
+  var ocultas = datos.catsOcultas || [];
+  datos.categorias.forEach(function (c) {
+    var esOculta = ocultas.indexOf(c.categoria) >= 0;
+    var it = document.createElement('button');
+    it.type = 'button'; it.className = 'aj-item' + (esOculta ? ' oculta' : '');
+    var em = document.createElement('span');
+    em.className = 'ai-emoji'; em.textContent = c.icono || '🏷️';
+    var txt = document.createElement('span');
+    txt.className = 'ai-txt';
+    var nom = document.createElement('b'); nom.textContent = c.categoria;
+    var sub = document.createElement('span');
+    sub.className = 'ai-saldo';
+    sub.textContent = (c.tipoSugerido ? c.tipoSugerido : 'sin tipo') + (esOculta ? ' · oculta' : '');
+    txt.appendChild(nom); txt.appendChild(sub);
+    var chev = document.createElement('span');
+    chev.innerHTML = icono('lapiz');
+    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
+    it.onclick = function () { abrirCatEditor(c); };
+    cont.appendChild(it);
+  });
+}
+
+/** Conecta Ajustes: tema, altas, editores de categoria y de recurrentes. */
+function conectarAjustes() {
+  // Tema: lo guardado, o 'auto' (sigue al sistema)
+  aplicarTema(localStorage.getItem('tema') || 'auto');
+  // En modo 'auto', re-aplicar cuando el sistema cambie de claro/oscuro
+  if (window.matchMedia) {
+    matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
+      if ((localStorage.getItem('tema') || 'auto') === 'auto') aplicarTema('auto');
+    });
+  }
+  document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
+    b.onclick = function () { elegirTema(b.dataset.tema); };
+  });
+
+  // Navegacion indice <-> detalle
+  $('aj-volver').onclick = cerrarGrupoAjustes;
+
+  // Altas desde los grupos
+  $('aj-add-cuenta').onclick = function () { abrirModalCuenta('Activo'); };
+  $('aj-add-deuda').onclick = function () { abrirModalCuenta('Deuda'); };
+  $('aj-add-cat').onclick = function () { abrirCatEditor(null); };
+  $('aj-add-recur').onclick = function () { abrirRecurEditor(null); };
+  // Ordenar se hace arrastrando las tarjetas del Panel, asi que lleva alli
+  $('aj-ordenar').onclick = function () { irA('resumen'); if (!ordenando) alternarOrden(); };
+
+  // Editor de una categoria (incluye su tope mensual desde v11)
+  $('cat-guardar').onclick = guardarCatEditor;
+  $('cat-eliminar').onclick = eliminarCatEditor;
+  $('cat-cancelar').onclick = cerrarCatEditor;
+  $('modal-cat').onclick = function (e) { if (e.target === this) cerrarCatEditor(); };
+  $('cat-tope').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+
+  // Editor de un movimiento recurrente
+  $('recur-guardar').onclick = guardarRecurEditor;
+  $('recur-eliminar').onclick = eliminarRecurEditor;
+  $('recur-cancelar').onclick = cerrarRecurEditor;
+  $('modal-recur').onclick = function (e) { if (e.target === this) cerrarRecurEditor(); };
+  $('recur-valor').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('recur-cuenta').onchange = pintarRecurTipo; // el simbolo sigue a la moneda
+  document.querySelectorAll('#recur-tipos .chip').forEach(function (b) {
+    b.onclick = function () { recurTipoSel = b.dataset.rtipo; pintarRecurTipo(); };
+  });
+}
+</script>

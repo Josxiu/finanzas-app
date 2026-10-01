@@ -1,0 +1,350 @@
+<script>
+/* =====================================================================
+   Finanzas App — Vista Historial (filtros, lista) y modal de edición de un movimiento.
+   ===================================================================== */
+
+// ============================================================ HISTORIAL
+function renderFiltros() {
+  // Meses presentes en los movimientos
+  var meses = {};
+  datos.movimientos.forEach(function (m) { meses[m.fecha.substring(0, 7)] = true; });
+  llenarSelect($('fil-mes'), Object.keys(meses).sort().reverse(), 'Mes: todos', nombreMes);
+  llenarSelect($('fil-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), 'Cuenta: todas');
+  llenarSelect($('fil-categoria'), datos.categorias.map(function (c) { return c.categoria; }), 'Categoría: todas');
+}
+
+/* llenarSelect y normalizarTexto viven en app-core: los usan también Ajustes,
+   el modal de recurrentes y el buscador de categorías de Registrar. */
+
+/* ------------------------------------------------------- Filtros activos
+   Los 4 selectores y el rango de fechas viven en un panel plegado; lo que esté
+   filtrando se resume en chips con ✕. Así la barra ocupa una fila en vez de
+   214px, y de un vistazo se ve por qué la lista está recortada. */
+
+/** Los filtros puestos ahora mismo, con qué campo los limpia. */
+function filtrosActivos() {
+  var lista = [];
+  var fMes = $('fil-mes').value;
+  if (fMes) lista.push({ txt: nombreMes(fMes), ids: ['fil-mes'] });
+  if ($('fil-cuenta').value) lista.push({ txt: $('fil-cuenta').value, ids: ['fil-cuenta'] });
+  if ($('fil-tipo').value) lista.push({ txt: $('fil-tipo').value, ids: ['fil-tipo'] });
+  if ($('fil-categoria').value) lista.push({ txt: $('fil-categoria').value, ids: ['fil-categoria'] });
+  var d1 = $('fil-desde').value, d2 = $('fil-hasta').value;
+  if (d1 || d2) {
+    lista.push({
+      txt: (d1 ? fechaBonita(d1) : 'inicio') + ' → ' + (d2 ? fechaBonita(d2) : 'hoy'),
+      ids: ['fil-desde', 'fil-hasta']
+    });
+  }
+  if ($('fil-buscar').value.trim()) {
+    lista.push({ txt: '“' + $('fil-buscar').value.trim() + '”', ids: ['fil-buscar'] });
+  }
+  return lista;
+}
+
+function renderFiltrosActivos() {
+  var cont = $('fil-activos');
+  cont.innerHTML = '';
+  var lista = filtrosActivos();
+  cont.hidden = lista.length === 0;
+  if (!lista.length) return;
+
+  lista.forEach(function (f) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'chip-filtro';
+    b.title = 'Quitar este filtro';
+    var t = document.createElement('span');
+    t.className = 'txt';
+    t.textContent = f.txt;              // textContent: viene de la hoja
+    b.appendChild(t);
+    var x = document.createElement('span');
+    x.innerHTML = icono('x', true);
+    b.appendChild(x);
+    b.onclick = function () {
+      f.ids.forEach(function (id) { $(id).value = ''; });
+      renderHistorial();
+    };
+    cont.appendChild(b);
+  });
+
+  var limpiar = document.createElement('button');
+  limpiar.type = 'button';
+  limpiar.className = 'enlace';
+  limpiar.textContent = 'Quitar todos';
+  limpiar.onclick = limpiarFiltros;
+  cont.appendChild(limpiar);
+}
+
+/** Deja el Historial sin ningún filtro. */
+function limpiarFiltros() {
+  ['fil-mes', 'fil-cuenta', 'fil-tipo', 'fil-categoria', 'fil-desde', 'fil-hasta', 'fil-buscar']
+    .forEach(function (id) { $(id).value = ''; });
+  renderHistorial();
+}
+
+function renderHistorial() {
+  var fMes = $('fil-mes').value, fCta = $('fil-cuenta').value;
+  var fTipo = $('fil-tipo').value, fCat = $('fil-categoria').value;
+  var fDesde = $('fil-desde').value, fHasta = $('fil-hasta').value;
+  var busq = normalizarTexto($('fil-buscar').value.trim());
+
+  var lista = datos.movimientos.filter(function (m) {
+    if (fMes && m.fecha.substring(0, 7) !== fMes) return false;
+    // Fechas ISO: la comparación de strings equivale a comparar fechas
+    if (fDesde && m.fecha < fDesde) return false;
+    if (fHasta && m.fecha > fHasta) return false;
+    if (fCta && m.cuenta !== fCta && m.cuentaDestino !== fCta) return false;
+    if (fTipo && m.tipo !== fTipo) return false;
+    if (fCat && m.categoria !== fCat) return false;
+    if (busq && normalizarTexto(m.descripcion + ' ' + m.categoria + ' ' +
+        m.cuenta + ' ' + m.cuentaDestino).indexOf(busq) < 0) return false;
+    return true;
+  });
+
+  pintarBotonMas();
+  renderFiltrosActivos();
+
+  // Resumen de lo filtrado: cuántos son y cuánto suman. Solo aparece cuando
+  // hay algún filtro activo (sin filtrar mezcla meses y solo estorba).
+  // Transferencias y pagos no suman: mueven plata, no la gastan (como el backend).
+  // Cada valor se pasa a COP con la tasa de su cuenta para no sumar peras con dólares.
+  var tIng = 0, tGas = 0;
+  lista.forEach(function (m) {
+    if (m.tipo === 'Ingreso') tIng += m.valor * tasaDe(m.cuenta);
+    if (m.tipo === 'Gasto') tGas += m.valor * tasaDe(m.cuenta);
+  });
+  var hayFiltro = !!(fMes || fCta || fTipo || fCat || busq || fDesde || fHasta);
+  var res = $('hist-resumen');
+  res.innerHTML = '';
+  res.hidden = !hayFiltro || lista.length === 0;
+  if (hayFiltro && lista.length > 0) {
+    [
+      { txt: lista.length + (lista.length === 1 ? ' movimiento' : ' movimientos'), clase: '' },
+      { txt: '+' + fmtBase(tIng), clase: 'verde' },
+      { txt: '−' + fmtBase(tGas), clase: 'rojo' },
+      { txt: 'Neto ' + fmtBase(tIng - tGas), clase: '' }
+    ].forEach(function (p, i) {
+      if (i > 0) res.appendChild(document.createTextNode(' · '));
+      var s = document.createElement('span');
+      if (p.clase) s.className = p.clase;
+      s.textContent = p.txt;
+      res.appendChild(s);
+    });
+  }
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+
+  var cont = $('lista-movs');
+  cont.innerHTML = '';
+  if (lista.length === 0) {
+    cont.innerHTML = '<div class="mensaje-vacio">' + icono('buscar') +
+      'No hay movimientos con esos filtros</div>';
+    return;
+  }
+  pintarMovimientos(cont, lista, iconos);
+}
+
+/**
+ * Pinta una lista de movimientos (con encabezado por día) dentro de `cont`.
+ * La usan el Historial y la vista de detalle de cuenta.
+ */
+function pintarMovimientos(cont, lista, iconos) {
+  var diaActual = '';
+  lista.forEach(function (m) {
+    if (m.fecha !== diaActual) {
+      diaActual = m.fecha;
+      var t = document.createElement('div');
+      t.className = 'dia-titulo';
+      t.textContent = fechaBonita(m.fecha);
+      cont.appendChild(t);
+    }
+    var esDoble = (m.tipo === 'Transferencia' || m.tipo === 'Pago tarjeta');
+    var emojiCat = esDoble ? null : (iconos[m.categoria] || '🏷️');
+    var sub = esDoble ? (m.cuenta + ' → ' + m.cuentaDestino) : m.cuenta;
+    // Transferencia entre monedas: mostrar también lo que llegó al destino
+    if (esDoble && m.valorDestino > 0) {
+      sub += ' (' + fmtNativo(m.valorDestino, monedaDe(m.cuentaDestino)) + ')';
+    }
+    var clase = m.tipo === 'Ingreso' ? 'verde' : (m.tipo === 'Gasto' ? 'rojo' : '');
+    var signo = m.tipo === 'Ingreso' ? '+' : (m.tipo === 'Gasto' ? '−' : '');
+
+    // Nodos con textContent, no innerHTML: una descripción con "<" o "&"
+    // rompería el render (y aquí el texto lo escribe el usuario).
+    var d = document.createElement('div');
+    d.className = 'mov';
+
+    // Transferencias/pagos: icono SVG de UI; los gastos/ingresos: emoji de la
+    // categoría (los emojis quedan SOLO como icono de categoría).
+    var elIcono = document.createElement('div');
+    elIcono.className = 'icono';
+    if (esDoble) elIcono.innerHTML = icono(m.tipo === 'Pago tarjeta' ? 'tarjeta-cred' : 'transfer');
+    else elIcono.textContent = emojiCat;
+
+    var centro = document.createElement('div');
+    centro.className = 'centro';
+    var elDesc = document.createElement('div');
+    elDesc.className = 'desc';
+    elDesc.textContent = m.descripcion || m.categoria || m.tipo;
+    var elSub = document.createElement('div');
+    elSub.className = 'sub';
+    elSub.textContent = sub;
+    centro.appendChild(elDesc);
+    centro.appendChild(elSub);
+
+    var elMonto = document.createElement('div');
+    elMonto.className = 'monto ' + clase;
+    elMonto.textContent = signo + fmtNativo(m.valor, monedaDe(m.cuenta));
+
+    d.appendChild(elIcono);
+    d.appendChild(centro);
+    d.appendChild(elMonto);
+    d.onclick = function () { abrirModal(m); };
+    cont.appendChild(d);
+  });
+}
+
+// ============================================================ MODAL DE EDICIÓN
+function abrirModal(m) {
+  movEditando = m;
+  llenarSelect($('ed-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
+  llenarSelect($('ed-destino'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
+  llenarSelect($('ed-categoria'), datos.categorias.map(function (c) { return c.categoria; }), '— sin categoría —');
+
+  $('ed-tipo').value = m.tipo;
+  $('ed-valor').value = montoATexto(m.valor);
+  $('ed-fecha').value = m.fecha;
+  $('ed-cuenta').value = m.cuenta;
+  $('ed-destino').value = m.cuentaDestino;
+  $('ed-categoria').value = m.categoria;
+  $('ed-desc').value = m.descripcion;
+  $('ed-valor-destino').value = m.valorDestino > 0 ? montoATexto(m.valorDestino) : '';
+  ajustarModalTipo();
+  $('modal-fondo').hidden = false;
+}
+function cerrarModal() { $('modal-fondo').hidden = true; movEditando = null; }
+function ajustarModalTipo() {
+  var t = $('ed-tipo').value;
+  var esDoble = (t === 'Transferencia' || t === 'Pago tarjeta');
+  $('ed-bloque-destino').style.display = esDoble ? 'block' : 'none';
+  // El "llega al destino" solo aplica entre cuentas de monedas distintas
+  var distintas = esDoble && $('ed-cuenta').value && $('ed-destino').value &&
+    monedaDe($('ed-cuenta').value) !== monedaDe($('ed-destino').value);
+  $('ed-bloque-valor-destino').hidden = !distintas;
+  if (distintas) {
+    $('ed-lbl-valor-destino').textContent =
+      'Llega a ' + $('ed-destino').value + ' (' + monedaDe($('ed-destino').value) + ')';
+  }
+}
+
+function guardarEdicion() {
+  var valor = parsearMonto($('ed-valor').value);
+  if (!(valor > 0)) return toast('El monto debe ser mayor que cero', 'error');
+  var t = $('ed-tipo').value;
+  var esDoble = (t === 'Transferencia' || t === 'Pago tarjeta');
+  var conValorDestino = !$('ed-bloque-valor-destino').hidden;
+  var valorDestino = conValorDestino ? parsearMonto($('ed-valor-destino').value) : '';
+  if (conValorDestino && !(valorDestino > 0)) {
+    return toast('Escribe cuánto llega a ' + $('ed-destino').value, 'error');
+  }
+  var id = movEditando.id; // capturar ANTES de cerrar el modal (cerrarModal borra movEditando)
+  cerrarModal();
+  llamar('editarMovimiento', [{
+    id: id,
+    fecha: $('ed-fecha').value,
+    cuenta: $('ed-cuenta').value,
+    tipo: t,
+    cuentaDestino: esDoble ? $('ed-destino').value : '',
+    categoria: $('ed-categoria').value,
+    descripcion: $('ed-desc').value.trim(),
+    valor: valor,
+    valorDestino: valorDestino
+  }]);
+}
+
+/* ------------------------------------------------ Historial completo
+   getDatos manda solo la primera página (mandar años de movimientos haría el
+   payload enorme). El botón "Cargar más" pide el siguiente tramo y lo agrega a
+   `datos.movimientos`, así los filtros y el buscador siguen funcionando igual
+   sobre todo lo que ya se trajo. */
+var cargandoMas = false;
+
+function pintarBotonMas() {
+  var total = datos.totalMovimientos || datos.movimientos.length;
+  var faltan = total - datos.movimientos.length;
+  var wrap = $('hist-mas-wrap');
+  wrap.hidden = faltan <= 0;
+  if (faltan > 0) {
+    $('hist-mas').textContent = cargandoMas ? 'Cargando…' : 'Cargar más';
+    $('hist-mas').disabled = cargandoMas;
+    $('hist-cuantos').textContent = 'Viendo ' + datos.movimientos.length + ' de ' + total;
+  }
+}
+
+function cargarMasMovimientos() {
+  if (cargandoMas) return;
+  if (!hayRed()) return toast('Necesitas conexión para traer más historial', 'error');
+  cargandoMas = true;
+  pintarBotonMas();
+  google.script.run
+    .withSuccessHandler(function (resp) {
+      cargandoMas = false;
+      // Por id, no por posición: si entre medias se creó un movimiento, el
+      // corte se habría corrido y saldrían duplicados.
+      var vistos = {};
+      datos.movimientos.forEach(function (m) { vistos[m.id] = true; });
+      resp.movimientos.forEach(function (m) { if (!vistos[m.id]) datos.movimientos.push(m); });
+      datos.totalMovimientos = resp.total;
+      renderHistorial();
+    })
+    .withFailureHandler(function (err) {
+      cargandoMas = false;
+      pintarBotonMas();
+      toast(err && err.message ? err.message : 'No pude traer más movimientos', 'error');
+    })
+    .getMasMovimientos(datos.movimientos.length, 300);
+}
+
+function borrarEdicion() {
+  var id = movEditando.id;
+  var desc = movEditando.descripcion || movEditando.categoria || movEditando.tipo;
+  confirmar('Se borrará "' + desc + '" (' + fmtNativo(movEditando.valor, monedaDe(movEditando.cuenta)) +
+    '). Esto no se puede deshacer.',
+    { titulo: 'Borrar movimiento', aceptar: 'Borrar', peligro: true }, function (si) {
+      if (!si) return;
+      cerrarModal();
+      llamar('borrarMovimiento', [id]);
+    });
+}
+
+/** Conecta el Historial y el modal de edicion de un movimiento. */
+function conectarHistorial() {
+  ['fil-mes', 'fil-cuenta', 'fil-tipo', 'fil-categoria', 'fil-desde', 'fil-hasta']
+    .forEach(function (id) { $(id).onchange = renderHistorial; });
+  // Con 300 movimientos como mucho en memoria no hace falta debounce
+  $('fil-buscar').addEventListener('input', renderHistorial);
+
+  // El panel de filtros se pliega. Al plegarlo NO se limpia nada: los chips de
+  // "filtros activos" siguen diciendo que esta puesto.
+  $('fil-toggle').onclick = function () {
+    var p = $('fil-panel');
+    p.hidden = !p.hidden;
+    this.setAttribute('aria-expanded', p.hidden ? 'false' : 'true');
+    marcarActivo(this, !p.hidden);
+  };
+  $('hist-mas').onclick = cargarMasMovimientos;
+
+  // Modal de edicion de un movimiento
+  $('ed-tipo').onchange = ajustarModalTipo;
+  // Cambiar cuenta u origen puede cambiar de moneda: revisar el campo "llega"
+  $('ed-cuenta').onchange = ajustarModalTipo;
+  $('ed-destino').onchange = ajustarModalTipo;
+  $('ed-guardar').onclick = guardarEdicion;
+  $('ed-borrar').onclick = borrarEdicion;
+  $('ed-cancelar').onclick = cerrarModal;
+  $('modal-fondo').onclick = function (e) { if (e.target === this) cerrarModal(); };
+  $('ed-valor').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+  $('ed-valor-destino').addEventListener('input', function () { formatearMontoEnVivo(this, false); });
+}
+</script>

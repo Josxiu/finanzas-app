@@ -1,8 +1,28 @@
 # Solo estos archivos van a Apps Script; todo lo demás es local
 # (el preview/ es Node y rompería el servidor: "require is not defined")
+#
+# OJO: es una LISTA BLANCA. Cualquier archivo nuevo que deba subir a Apps Script
+# tiene que añadirse aquí, o la app queda a medias sin avisar.
 **/**
 !Code.js
+!util-hoja.js
+!srv-datos.js
+!srv-saldos.js
+!srv-movimientos.js
+!srv-cuentas.js
+!srv-categorias.js
+!srv-config.js
 !index.html
-!styles.html
-!app.html
+!estilos-tokens.html
+!estilos-base.html
+!estilos-componentes.html
+!estilos-vistas.html
+!app-core.html
+!app-registrar.html
+!app-panel.html
+!app-historial.html
+!app-cuentas.html
+!app-evolucion.html
+!app-ajustes.html
+!app-arranque.html
 !appsscript.json

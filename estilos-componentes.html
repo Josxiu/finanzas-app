@@ -1,0 +1,478 @@
+<style>
+  /* =====================================================================
+     Finanzas App — COMPONENTES
+     Piezas con nombre propio que se usan en más de una vista (o que podrían):
+     chips, botones, tarjeta de cuenta, listas, tablas, modales, toast, nav.
+     Lo que solo tiene sentido dentro de UNA vista vive en estilos-vistas.html.
+     ===================================================================== */
+
+  /* ---------------------------------------------------------------- Chips */
+  .chips { display: flex; flex-wrap: wrap; gap: var(--e2); }
+  .chip {
+    min-height: var(--alto-toque); padding: var(--e2) var(--pad-tarjeta);
+    border-radius: var(--radio-chip);
+    border: 1.5px solid var(--borde); background: var(--tarjeta); cursor: pointer;
+    font-size: var(--t-cuerpo); display: inline-flex; align-items: center; gap: var(--gap-chip);
+    color: var(--texto);
+  }
+  .chip .punto {
+    width: var(--e3); height: var(--e3); border-radius: 50%; display: inline-block;
+    background: var(--color-cuenta, var(--borde));
+  }
+  /* La elegida tiene que cantar: borde de 2px de su color, fondo teñido, negrita
+     y un ✓ al final. Antes solo cambiaba un borde de 1.5px y no se notaba. */
+  .chip.activa {
+    border-color: var(--color-cuenta, var(--primario));
+    border-width: 2px;
+    background: color-mix(in srgb, var(--color-cuenta, var(--primario)) 14%, var(--tarjeta));
+    font-weight: 600;
+  }
+  .chip .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chip .cod { color: var(--texto-suave); font-size: var(--t-micro); font-weight: 600; flex: none; }
+  .chip .ic-check { margin-left: auto; color: var(--color-cuenta, var(--acento)); flex: none; }
+  /* "Gestionar" no es una opción más: es la puerta a Ajustes. Borde punteado
+     para que no se confunda con una categoría elegible. */
+  .chip-gestionar { border-style: dashed; color: var(--texto-suave); }
+  .chip-gestionar:hover { color: var(--acento); border-color: var(--acento); }
+
+  /* Grilla que fluye: aprovecha el ancho que hay en vez de esconder opciones en
+     una tira con scroll. En PC caben todas de un vistazo; en móvil, 2-3 por fila.
+     `auto-fill` (no `auto-fit`) para que con pocas opciones los chips no se
+     estiren a lo ancho de la tarjeta. */
+  .chips-grilla {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(var(--min-chip), 1fr));
+    gap: var(--e2);
+  }
+  /* Las categorías son más cortas (emoji + una palabra), así que caben más por
+     fila. Eso es lo que permite que el formulario entre de una en PC. */
+  .chips-grilla.densa { grid-template-columns: repeat(auto-fill, minmax(var(--min-chip-cat), 1fr)); }
+  /* En grilla el chip no necesita los 48px de una tira suelta: 44 sigue siendo
+     un objetivo táctil cómodo y ahorra una barbaridad de alto con 8 opciones. */
+  .chips-grilla .chip { min-width: 0; min-height: var(--alto-toque-min); }
+
+  /* Categorías agrupadas por tipo, con un encabezado discreto */
+  .chips-grupo + .chips-grupo { margin-top: var(--e2); }
+  .chips-grupo-tit {
+    display: block; font-size: var(--t-micro); font-weight: 600; color: var(--texto-suave);
+    text-transform: uppercase; letter-spacing: .3px; margin-bottom: var(--e1);
+  }
+
+  /* Foco visible: quien navega con Tab tiene que ver dónde está parado. */
+  .chip:focus-visible, .btn-tipo:focus-visible, .btn-mini:focus-visible,
+  .btn-principal:focus-visible, .btn-secundario:focus-visible, .btn-peligro:focus-visible,
+  .btn-icono:focus-visible, .nav-btn:focus-visible, .nav-registrar:focus-visible,
+  .enlace:focus-visible, .transfer-card:focus-visible, .transfer-swap:focus-visible,
+  .aj-item:focus-visible, .fila-cat:focus-visible, .tarjeta-cuenta:focus-visible,
+  .swatch:focus-visible, .emoji-grid button:focus-visible {
+    outline: 2px solid var(--acento); outline-offset: 2px;
+  }
+
+  /* Validación: el toast dice QUÉ falta, esto dice DÓNDE. Se limpia al primer
+     toque en el bloque (ver limpiarError en app-registrar). */
+  .campo-error {
+    border-color: var(--rojo) !important;
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--rojo) 18%, transparent);
+  }
+
+  /* Etiqueta que no encabeza su tarjeta, sino un bloque de más abajo */
+  .etiqueta-suelta { margin-top: var(--pad-tarjeta); }
+
+  /* -------------------------------------------------------------- Botones */
+  .btn-tipo {
+    min-height: var(--alto-tipo); border: 1.5px solid var(--borde-tarjeta); border-radius: var(--radio);
+    background: var(--tarjeta); box-shadow: var(--sombra-1); cursor: pointer;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: var(--e1);
+    color: var(--texto-suave);
+  }
+  .btn-tipo span { font-size: var(--t-mini); font-weight: 600; }
+  .btn-tipo.activa { border-color: var(--primario); color: var(--acento); background: var(--acento-suave); }
+
+  .btn-principal {
+    width: 100%; min-height: var(--alto-cta); border: none; border-radius: var(--radio);
+    background: var(--primario); color: var(--sobre-color); font-size: var(--t-cifra); font-weight: 700;
+    cursor: pointer; box-shadow: var(--sombra-1); margin-top: var(--e1);
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--e2);
+  }
+  .btn-principal:disabled { opacity: .6; }
+  .btn-principal.compacto { width: auto; padding: 0 var(--e4b); min-height: var(--alto-toque); font-size: var(--t-boton); }
+  .btn-secundario {
+    min-height: var(--alto-toque); padding: 0 var(--e4); border: 1.5px solid var(--borde);
+    border-radius: var(--radio-chip); background: var(--tarjeta); color: var(--texto);
+    font-size: var(--t-boton); cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--gap-chip);
+  }
+  .btn-peligro {
+    min-height: var(--alto-toque); padding: 0 var(--pad-tarjeta); border: none; border-radius: var(--radio-chip);
+    background: var(--peligro-fondo); color: var(--rojo); font-size: var(--t-cuerpo);
+    font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center; gap: var(--gap-chip);
+  }
+  .btn-mini {
+    min-height: var(--alto-min); padding: var(--e1) var(--e3); border-radius: var(--radio-chip);
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto);
+    font-size: var(--t-dato); cursor: pointer; white-space: nowrap;
+    display: inline-flex; align-items: center; gap: var(--gap-chip);
+  }
+  .btn-mini:hover { border-color: var(--texto-suave); }
+  .btn-mini .ic { width: 15px; height: 15px; color: var(--texto-suave); }
+  .enlace {
+    border: none; background: none; color: var(--acento); cursor: pointer;
+    font: inherit; font-size: var(--t-enlace); font-weight: 600;
+    padding: var(--e2) 0; min-height: var(--alto-toque-min);
+    display: inline-flex; align-items: center; gap: var(--gap-chip);
+  }
+
+  /* Paleta de colores (modal de cuenta nueva y edición) */
+  .paleta { display: flex; flex-wrap: wrap; gap: var(--pad-fila); }
+  .swatch {
+    width: 38px; height: 38px; border-radius: 50%; cursor: pointer;
+    border: 3px solid transparent; padding: 0;
+  }
+  .swatch.activa { border-color: var(--texto); }
+
+  /* -------------------------------- Estado de red / pendientes por subir
+     Ámbar: no es un error, es "tranquilo, está guardado y se sube solo". */
+  .chip-red {
+    display: inline-flex; align-items: center; gap: var(--gap-chip);
+    min-height: var(--alto-toque-min); padding: 0 var(--e3); border-radius: var(--radio-pildora);
+    border: 1.5px solid color-mix(in srgb, var(--ambar) 45%, var(--borde));
+    background: color-mix(in srgb, var(--ambar) 16%, var(--tarjeta));
+    color: var(--ambar-texto); font-size: var(--t-nota); font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .chip-red .ic { width: var(--ic-mini); height: var(--ic-mini); }
+  .chip-red.subiendo { opacity: .75; }
+  /* Aviso de "viendo datos guardados" mientras llega el fresco */
+  .aviso-cache {
+    font-size: var(--t-caption); color: var(--texto-suave);
+    text-align: center; padding: var(--gap-chip) 0 var(--e0);
+  }
+
+  /* ------------------------------------------------------ Tarjeta de cuenta */
+  .tarjeta-cuenta {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: var(--e3) var(--pad-tarjeta); border-top: 4px solid var(--color-cuenta, var(--borde));
+    cursor: pointer; position: relative;
+  }
+  .tarjeta-cuenta.agregar {
+    display: flex; align-items: center; justify-content: center; gap: var(--gap-chip);
+    color: var(--texto-suave); font-weight: 600; font-size: var(--t-lista);
+    border-top-color: var(--borde); min-height: var(--alto-tipo);
+  }
+  .tarjeta-cuenta.agregar .ic { width: var(--ic-mini); height: var(--ic-mini); }
+  .tarjeta-cuenta .nombre {
+    font-size: var(--t-nota); font-weight: 600; color: var(--texto-suave);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tarjeta-cuenta .saldo { font-size: var(--t-cifra); font-weight: 700; margin-top: var(--e0); font-variant-numeric: tabular-nums; }
+  .tarjeta-cuenta .mini { margin-top: var(--e0); }
+  /* Sparkline de 30 días dentro de la tarjeta */
+  .spark-wrap { margin-top: var(--e2); }
+  .spark { display: block; width: 100%; height: 26px; opacity: .8; }
+  .tarjeta-cuenta:hover .spark { opacity: 1; }
+  @media (hover: hover) {
+    .tarjeta-cuenta:hover { box-shadow: var(--sombra-2); transform: translateY(-1px); }
+  }
+  /* Flechas del modo ordenar */
+  .btn-orden {
+    position: absolute; bottom: var(--e2); left: var(--e2);
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto);
+    cursor: pointer; font-size: var(--t-nota);
+  }
+  .btn-orden.der { left: auto; right: var(--e2); }
+  .tarjeta-cuenta[draggable="true"] { cursor: grab; padding-bottom: var(--alto-toque); }
+  .tarjeta-cuenta:active { transform: scale(.98); }
+
+  /* -------------------------------------------------- Resumen de 4 cifras */
+  .resumen-mes { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--pad-fila) var(--e2); text-align: center; }
+  .resumen-mes b { font-size: var(--t-cifra-chica); font-variant-numeric: tabular-nums; }
+  .resumen-mes.dos { grid-template-columns: repeat(2, 1fr); }
+  /* Delta vs el mes pasado: texto discreto, el color ya dice si es bueno o malo */
+  .chip-delta {
+    display: inline-block; font-size: var(--t-micro); font-weight: 600; margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+  .chip-delta.sube { color: var(--rojo); }
+  .chip-delta.baja { color: var(--verde); }
+  /* Proyección de fin de mes (bajo los 4 datos de "Este mes") */
+  .proyeccion {
+    font-size: var(--t-caption); color: var(--texto-suave); text-align: center;
+    margin-top: var(--pad-fila); padding-top: var(--e2); border-top: 1px solid var(--divisor);
+  }
+
+  /* ------------------------------------------------------------- Gráficas */
+  /* Selector de rango */
+  .rango-graficas { display: flex; gap: var(--e2); margin-bottom: var(--e3); flex-wrap: wrap; }
+  .rango-graficas .chip { min-height: var(--alto-chico); padding: var(--gap-chip) var(--pad-tarjeta); font-size: var(--t-lista); }
+  .rango-graficas .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave);
+    color: var(--acento); font-weight: 600;
+  }
+  /* Chips de vista dentro de cada tarjeta de gráfica (dona/lista, I vs G/neto) */
+  .chips-grafica { display: flex; gap: var(--gap-chip); flex-wrap: wrap; align-items: stretch; margin-bottom: var(--pad-fila); }
+  .chips-grafica .chip { min-height: var(--e6); padding: var(--e1) var(--e3); font-size: var(--t-nota); }
+  .chips-grafica .chip.activa {
+    border-color: var(--primario); background: var(--acento-suave);
+    color: var(--acento); font-weight: 600;
+  }
+  .lienzo { position: relative; height: var(--alto-lienzo); }
+  .lienzo.alto { height: var(--alto-lienzo-alto); }
+
+  /* Lista "top categorías" (vista alternativa a la dona) y presupuestos */
+  .lista-cats { display: flex; flex-direction: column; gap: var(--e3); padding: var(--gap-chip) 0 var(--e0); }
+  .fila-cat {
+    border: none; background: none; padding: 0; cursor: pointer;
+    text-align: left; font: inherit; color: var(--texto); width: 100%;
+  }
+  .fila-cat-info { display: flex; justify-content: space-between; gap: var(--e2); font-size: var(--t-lista); margin-bottom: var(--e1); }
+  .fila-cat-info .monto { color: var(--texto-suave); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fila-cat .barra { height: var(--e2); border-radius: var(--e1); background: var(--suave); overflow: hidden; }
+  .fila-cat .relleno { height: 100%; border-radius: var(--e1); transition: width .3s ease; }
+  /* Presupuestos: mismo esqueleto que .fila-cat, con semáforo en la barra */
+  .fila-presup .relleno.ok { background: var(--verde); }
+  .fila-presup .relleno.alerta { background: var(--ambar); }
+  .fila-presup .relleno.pasado { background: var(--rojo); }
+
+  /* ------------------------------------------- Estados vacíos y esqueletos */
+  .mensaje-vacio {
+    text-align: center; color: var(--texto-suave); padding: var(--e5) 0;
+    font-size: var(--t-lista);
+  }
+  .mensaje-vacio .ic { width: 28px; height: 28px; stroke-width: 1.5; display: block; margin: 0 auto var(--e2); opacity: .6; }
+  .mensaje-vacio .btn-mini { margin-top: var(--e3); }
+  /* Esqueletos de carga inicial: bloques con brillo que respiran */
+  .esqueleto {
+    display: inline-block; border-radius: var(--gap-chip); min-height: 1em;
+    background: linear-gradient(100deg, var(--suave) 40%, var(--divisor) 50%, var(--suave) 60%);
+    background-size: 200% 100%;
+    animation: brillar 1.2s ease-in-out infinite;
+    color: transparent !important; user-select: none;
+  }
+  @keyframes brillar { from { background-position: 120% 0; } to { background-position: -80% 0; } }
+  .patrimonio .esqueleto { background: rgba(255,255,255,.25); animation: none; }
+
+  /* ------------------------------------------------- Tarjetas de insight */
+  .insights { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--pad-fila); margin-bottom: var(--e3); }
+  .insight {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: var(--e3) var(--pad-tarjeta);
+  }
+  .insight .k { font-size: var(--t-mini); font-weight: 600; color: var(--texto-suave);
+    text-transform: uppercase; letter-spacing: .3px; }
+  .insight .v { font-size: var(--t-cifra); font-weight: 700; margin-top: 3px; font-variant-numeric: tabular-nums; }
+  .insight .s { font-size: var(--t-seccion); color: var(--texto-suave); margin-top: 1px; }
+
+  /* ------------------------------------------------------------- Tablas */
+  .tabla-scroll { overflow-x: auto; }
+  .tabla-meses { width: 100%; border-collapse: collapse; font-size: var(--t-nota); font-variant-numeric: tabular-nums; }
+  .tabla-meses th, .tabla-meses td { padding: 7px var(--e2); text-align: right; white-space: nowrap; }
+  .tabla-meses th:first-child, .tabla-meses td:first-child { text-align: left; }
+  .tabla-meses thead th {
+    font-size: var(--t-micro); text-transform: uppercase; letter-spacing: .3px;
+    color: var(--texto-suave); border-bottom: 1px solid var(--divisor);
+  }
+  .tabla-meses tbody tr { border-bottom: 1px solid var(--divisor); }
+  .tabla-meses tbody tr:last-child { border-bottom: none; }
+  .tabla-meses .mes-actual td { font-weight: 700; }
+  /* En el celular no caben 7 columnas: la tabla se salía con scroll horizontal
+     propio (418px de ancho para 559 de contenido). Se pliegan "Fin" y "%", que
+     se deducen del inicio del mes siguiente y del neto; en PC siguen ahí. */
+  @media (max-width: 599px) {
+    .tabla-meses th:nth-child(6), .tabla-meses td:nth-child(6),
+    .tabla-meses th:nth-child(7), .tabla-meses td:nth-child(7) { display: none; }
+  }
+
+  /* ------------------------------------------------ Fila de movimiento */
+  .dia-titulo {
+    font-size: var(--t-caption); font-weight: 700; color: var(--texto-suave);
+    margin: var(--pad-tarjeta) var(--e1) var(--gap-chip); text-transform: uppercase; letter-spacing: .4px;
+  }
+  .mov {
+    background: var(--tarjeta); border-radius: var(--radio);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    padding: var(--pad-fila) var(--pad-tarjeta); margin-bottom: var(--gap-chip);
+    display: flex; align-items: center;
+    gap: var(--e3); cursor: pointer; min-height: var(--alto-cta);
+  }
+  .mov .icono {
+    font-size: var(--ic); width: var(--alto-min); height: var(--alto-min); flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: var(--suave); border-radius: 50%;
+  }
+  .mov .icono .ic { width: 18px; height: 18px; color: var(--texto-suave); }
+  .mov .centro { flex: 1; min-width: 0; }
+  .mov .desc { font-size: var(--t-cuerpo); font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mov .sub { font-size: var(--t-caption); color: var(--texto-suave); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mov .monto { font-weight: 700; font-size: var(--t-cuerpo); white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  /* ------------------------------------------------------- Navegación
+     Barra inferior en móvil; el bloque de escritorio la convierte en sidebar. */
+  .nav-inferior {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: center; gap: 0;
+    background: var(--tarjeta); border-top: 1px solid var(--borde-tarjeta);
+    box-shadow: var(--sombra-nav);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .nav-btn {
+    flex: 1; max-width: 160px; min-height: var(--alto-nav); border: none; background: none;
+    color: var(--texto-suave); cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  }
+  .nav-btn span { font-size: var(--t-mini); font-weight: 600; }
+  .nav-btn.activa { color: var(--acento); }
+  .nav-btn.activa .ic-nav { stroke-width: 2.2; }
+  .marca { display: none; } /* solo en PC: el título vive en el sidebar */
+
+  /* Registrar: botón flotante (+) en móvil. Fijo (fuera del flujo de la barra),
+     por eso la barra de abajo solo reparte los 4 nav-btn. En PC pasa a ser un
+     botón del sidebar (ver estilos-vistas.html). */
+  .nav-registrar {
+    position: fixed; right: var(--e4);
+    bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 25;
+    width: var(--alto-cta); height: var(--alto-cta); border-radius: 50%; border: none;
+    background: var(--primario); color: var(--sobre-color); cursor: pointer;
+    box-shadow: var(--sombra-2);
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .nav-registrar .ic-nav { width: 26px; height: 26px; stroke-width: 2.4; }
+  .nav-registrar span { display: none; }
+  .nav-registrar:active { transform: scale(.94); }
+
+  /* ------------------------------ Selector visual de transferencia (Origen → Destino) */
+  .transfer-sel { display: flex; align-items: stretch; gap: var(--e2); }
+  .transfer-card {
+    flex: 1; min-width: 0; text-align: left; cursor: pointer;
+    background: var(--suave); border: 1.5px solid transparent; border-radius: var(--radio-chip);
+    padding: var(--pad-fila) var(--e3); display: flex; flex-direction: column; gap: 3px;
+    color: var(--texto); font: inherit; min-height: var(--alto-nav); justify-content: center;
+  }
+  .transfer-card.activa { border-color: var(--primario); background: var(--acento-suave); }
+  .tc-rol { font-size: var(--t-micro); font-weight: 600; text-transform: uppercase; letter-spacing: .3px; color: var(--texto-suave); }
+  .tc-cuenta { display: inline-flex; align-items: center; gap: var(--gap-chip); font-size: var(--t-cuerpo); font-weight: 600; }
+  .tc-cuenta .punto { width: 11px; height: 11px; border-radius: 50%; background: var(--color-cuenta, var(--borde)); flex: none; }
+  .tc-cuenta span:last-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .transfer-swap {
+    flex: none; width: var(--alto-chico); align-self: center; height: var(--alto-chico); border-radius: 50%;
+    border: 1.5px solid var(--borde); background: var(--tarjeta); color: var(--texto-suave);
+    cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
+  }
+  .transfer-swap:hover { color: var(--acento); border-color: var(--acento); }
+  .transfer-swap:active { transform: rotate(180deg); }
+
+  /* ------------------------------------------------- Filas de configuración */
+  .fila-ajuste {
+    display: flex; align-items: center; gap: var(--e3);
+    padding: var(--e2) 0; color: var(--texto); text-decoration: none;
+  }
+  .fila-ajuste + .fila-ajuste { border-top: 1px solid var(--divisor); }
+  .fila-ajuste .fa-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--e0); }
+  .fila-ajuste .fa-txt b { font-size: var(--t-cuerpo); font-weight: 600; }
+  .fila-ajuste .ic { color: var(--texto-suave); }
+  a.fila-ajuste:hover .ic { color: var(--acento); }
+  /* Fila con interruptor: la casilla no debe heredar el ancho ni el alto de los
+     campos de formulario (eran dos `style=` sueltos en el HTML). */
+  .fila-interruptor { cursor: pointer; }
+  .fila-interruptor input[type="checkbox"] { width: auto; min-height: auto; }
+
+  /* Tabla de tasas */
+  .tasa-fila { display: flex; align-items: center; gap: var(--e2); padding: var(--pad-fila) 0; border-bottom: 1px solid var(--divisor); }
+  .tasa-fila:last-child { border-bottom: none; }
+  .tasa-fila .tf-par { font-weight: 600; width: var(--alto-toque-min); flex: none; }
+  .tasa-fila .tf-val { flex: 1; min-width: 0; font-variant-numeric: tabular-nums; }
+  .tasa-fila .tf-badge {
+    font-size: var(--t-nano); font-weight: 600; text-transform: uppercase; letter-spacing: .3px;
+    padding: var(--e0) var(--e2); border-radius: var(--radio-pildora);
+    background: var(--suave); color: var(--texto-suave); white-space: nowrap;
+  }
+  .tasa-fila .tf-badge.manual { background: color-mix(in srgb, var(--ambar) 22%, var(--tarjeta)); color: var(--ambar-texto); }
+  .tasa-fila .tf-badge.sintasa { background: var(--peligro-fondo); color: var(--rojo); }
+  html[data-tema="oscuro"] .tasa-fila .tf-badge.manual { color: var(--ambar); }
+  .tasa-fila .btn-mini { min-height: 34px; }
+
+  /* Fila de cuenta/categoría/recurrente en Ajustes (tocar = editar) */
+  .aj-item {
+    display: flex; align-items: center; gap: var(--e3); width: 100%;
+    padding: var(--pad-fila) 0; border-bottom: 1px solid var(--divisor);
+    background: none; border-left: none; border-right: none; border-top: none;
+    font: inherit; color: var(--texto); text-align: left; cursor: pointer;
+  }
+  .aj-item:last-child { border-bottom: none; }
+  .aj-item .punto { width: var(--e3); height: var(--e3); border-radius: 50%; background: var(--color-cuenta, var(--borde)); flex: none; }
+  .aj-item .ai-emoji { font-size: var(--ic); width: var(--e5); text-align: center; flex: none; }
+  .aj-item .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .aj-item .ai-txt b { font-size: var(--t-cuerpo); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .aj-item .ai-saldo { font-size: var(--t-nota); color: var(--texto-suave); font-variant-numeric: tabular-nums; }
+  .aj-item.oculta { opacity: .5; }
+  .aj-item .ic { color: var(--texto-suave); flex: none; }
+
+  /* Picker de emoji (grilla curada) */
+  .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--e1); }
+  .emoji-grid button {
+    aspect-ratio: 1; border: 1.5px solid transparent; border-radius: var(--radio-chip);
+    background: var(--suave); font-size: var(--ic); cursor: pointer; padding: 0;
+  }
+  .emoji-grid button.activa { border-color: var(--primario); background: var(--acento-suave); }
+
+  /* -------------------------------------------------------------- Modales */
+  .modal-fondo {
+    position: fixed; inset: 0; z-index: 30; background: var(--overlay);
+    display: flex; align-items: flex-end; justify-content: center;
+  }
+  .modal {
+    background: var(--tarjeta); border-radius: var(--radio) var(--radio) 0 0;
+    width: 100%; max-width: var(--ancho-movil);
+    padding: var(--e4b) var(--pad-modal) calc(var(--pad-modal) + env(safe-area-inset-bottom));
+    max-height: 88vh; overflow-y: auto;
+    box-shadow: var(--sombra-3);
+    animation: subirModal .22s ease-out;
+  }
+  @keyframes subirModal { from { transform: translateY(var(--e5)); opacity: .6; } }
+  .modal h2 { font-size: var(--t-subtitulo); color: var(--acento); margin-bottom: var(--pad-tarjeta); }
+  .modal .etiqueta { margin-top: var(--e3); }
+  .modal-botones { display: flex; gap: var(--pad-fila); margin-top: var(--pad-modal); justify-content: flex-end; }
+  .modal-botones .btn-peligro { margin-right: auto; }
+  /* Modal de preguntar (confirmar / pedir un dato) */
+  .modal-pregunta #pregunta-texto { white-space: pre-line; font-size: var(--t-enlace); }
+  .modal-pregunta .btn-principal.peligro { background: var(--rojo); }
+
+  /* Fila "concepto → cifra" dentro de un modal (cuadre, presupuestos) */
+  .ajuste-fila {
+    display: flex; align-items: center; gap: var(--pad-fila);
+    padding: var(--pad-fila) 0; border-bottom: 1px solid var(--divisor); font-size: var(--t-lista);
+  }
+  .ajuste-fila span { color: var(--texto-suave); }
+  .ajuste-fila b { font-size: var(--t-boton); margin-left: auto; font-variant-numeric: tabular-nums; }
+  /* Cambiar saldo inicial (sección plegada del modal de cuadre) */
+  .seccion-si { margin-top: var(--e4); border-top: 1px solid var(--divisor); padding-top: var(--pad-fila); }
+
+  /* ------------------------------------------------------- Toast y carga */
+  .toast {
+    position: fixed; left: 50%; transform: translateX(-50%);
+    bottom: calc(80px + env(safe-area-inset-bottom)); z-index: 40;
+    background: var(--toast); color: var(--toast-texto);
+    padding: var(--e3) var(--e4b); border-radius: var(--radio-pildora);
+    font-size: var(--t-cuerpo); box-shadow: var(--sombra-2); max-width: 90vw; text-align: center;
+    animation: subir .25s ease-out;
+  }
+  .toast.error { background: var(--rojo); color: var(--sobre-color); }
+  .toast.exito { background: var(--verde); color: var(--sobre-color); }
+  html[data-tema="oscuro"] .toast.error, html[data-tema="oscuro"] .toast.exito { color: #1D2129; }
+  @keyframes subir { from { opacity: 0; transform: translate(-50%, var(--e4)); } }
+
+  .cargando {
+    position: fixed; inset: 0; z-index: 50; background: var(--velo);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .spinner {
+    width: 42px; height: 42px; border-radius: 50%;
+    border: var(--e1) solid var(--spinner); border-top-color: var(--primario);
+    animation: girar .8s linear infinite;
+  }
+  @keyframes girar { to { transform: rotate(360deg); } }
+</style>

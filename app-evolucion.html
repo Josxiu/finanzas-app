@@ -1,0 +1,428 @@
+<script>
+/* =====================================================================
+   Finanzas App — Vista Evolución: mes a mes, insights, composición y categorías en el tiempo.
+   ===================================================================== */
+
+// ============================================================ MESES
+/** Mes ('yyyy-MM') de la fecha de corte más antigua: antes de eso no hay saldos. */
+function corteMesGlobal() {
+  var corteMin = null;
+  datos.cuentas.forEach(function (c) {
+    if (!corteMin || c.fechaCorte < corteMin) corteMin = c.fechaCorte;
+  });
+  return (corteMin || '').substring(0, 7);
+}
+
+/** Meses que vale la pena listar: desde la fecha de corte, o con movimientos. */
+function mesesVisibles() {
+  var corteMes = corteMesGlobal();
+  return datos.resumen.meses.filter(function (m) {
+    return m.mes >= corteMes || m.ingresos > 0 || m.gastos > 0;
+  });
+}
+
+function renderMeses() {
+  var cont = $('lista-meses');
+  cont.innerHTML = '';
+  var lista = mesesVisibles().slice().reverse(); // más reciente arriba
+  lista.forEach(function (m) {
+    var neto = m.ingresos - m.gastos;
+    var d = document.createElement('div');
+    d.className = 'mov';
+
+    var elIcono = document.createElement('div');
+    elIcono.className = 'icono';
+    elIcono.innerHTML = icono('calendario');
+    var centro = document.createElement('div');
+    centro.className = 'centro';
+    var desc = document.createElement('div');
+    desc.className = 'desc';
+    desc.textContent = nombreMes(m.mes) + (m.mes === datos.hoy.substring(0, 7) ? ' (en curso)' : '');
+    var sub = document.createElement('div');
+    sub.className = 'sub';
+    // Antes del corte no hay datos de saldos: mostrar un número sería mentir
+    sub.textContent = m.mes < corteMesGlobal()
+      ? 'Antes del corte — sin datos de saldos'
+      : 'Empezó con ' + fmtBase(m.inicio);
+    centro.appendChild(desc);
+    centro.appendChild(sub);
+    var monto = document.createElement('div');
+    monto.className = 'monto ' + (neto > 0 ? 'verde' : (neto < 0 ? 'rojo' : ''));
+    monto.textContent = (neto > 0 ? '+' : '') + fmtBase(neto);
+    monto.title = 'Neto del mes';
+
+    d.appendChild(elIcono);
+    d.appendChild(centro);
+    d.appendChild(monto);
+    d.onclick = function () { abrirMes(m); };
+    cont.appendChild(d);
+  });
+
+  if ($('vista-meses').classList.contains('activa')) renderEvolucion();
+}
+
+var chartComposicion = null, chartCatsTiempo = null;
+
+/**
+ * Vista Evolución: TODO lo que es "a lo largo del tiempo".
+ *
+ * Desde v11 recibe la dona de categorías y las barras de ingresos vs gastos,
+ * que estaban en el Panel, y suelta la línea de patrimonio, que estaba repetida
+ * en las dos vistas con dos rangos distintos. Un solo `rangoSel` manda sobre
+ * todo lo de aquí.
+ */
+function renderEvolucion() {
+  // Estas partes son HTML puro (no dependen de Chart.js): siempre se pintan.
+  renderTablaMeses();
+  renderInsights();
+  marcarChipsRango();
+  // Chips de vista de cada gráfica
+  document.querySelectorAll('[data-vbarras]').forEach(function (b) {
+    marcarActivo(b, b.dataset.vbarras === vistaBarras);
+  });
+  document.querySelectorAll('[data-vcats]').forEach(function (b) {
+    marcarActivo(b, b.dataset.vcats === vistaCats);
+  });
+  // El botón de granularidad es un interruptor: muestra el modo actual
+  $('chip-gran-txt').textContent = granBarras === 'dia' ? 'Por día' : 'Por mes';
+
+  if (!hayChart()) return;
+  renderGraficaCategorias();
+  renderGraficaBarras();
+  renderComposicion();
+  renderCatsTiempo();
+}
+
+/** Fin de patrimonio de un mes = inicio del mes siguiente (o patrimonio si es el actual). */
+function finDeMes_(mes) {
+  var todos = datos.resumen.meses;
+  for (var i = 0; i < todos.length; i++) {
+    if (todos[i].mes === mes) {
+      return (i + 1 < todos.length) ? todos[i + 1].inicio : datos.patrimonio;
+    }
+  }
+  return datos.patrimonio;
+}
+
+/** (2) Tabla mes a mes: inicio, ingresos, gastos, neto, fin, % cambio.
+    Ingresos/gastos/neto se conocen siempre; inicio/fin/% solo desde el corte. */
+function renderTablaMeses() {
+  var corteMes = corteMesGlobal();
+  var lista = mesesVisibles().slice().reverse(); // reciente arriba
+  var mesHoy = datos.hoy.substring(0, 7);
+  var filas = lista.map(function (m) {
+    var neto = m.ingresos - m.gastos;
+    var clsNeto = neto > 0 ? 'verde' : (neto < 0 ? 'rojo' : '');
+    var conSaldos = m.mes >= corteMes; // antes del corte no hay saldos fiables
+    var inicioTxt = '—', finTxt = '—', pctTxt = '—', clasePct = '';
+    if (conSaldos) {
+      var fin = finDeMes_(m.mes);
+      var pct = m.inicio !== 0 ? Math.round((fin - m.inicio) / Math.abs(m.inicio) * 100) : null;
+      clasePct = pct === null ? '' : (pct >= 0 ? 'verde' : 'rojo');
+      inicioTxt = fmtBase(m.inicio);
+      finTxt = fmtBase(fin);
+      pctTxt = pct === null ? '—' : (pct >= 0 ? '+' : '') + pct + '%';
+    }
+    return '<tr class="' + (m.mes === mesHoy ? 'mes-actual' : '') + '">' +
+      '<td>' + nombreMes(m.mes) + (m.mes === mesHoy ? ' •' : '') + '</td>' +
+      '<td>' + inicioTxt + '</td>' +
+      '<td class="verde">' + fmtBase(m.ingresos) + '</td>' +
+      '<td class="rojo">' + fmtBase(m.gastos) + '</td>' +
+      '<td class="' + clsNeto + '">' + (neto > 0 ? '+' : '') + fmtBase(neto) + '</td>' +
+      '<td>' + finTxt + '</td>' +
+      '<td class="' + clasePct + '">' + pctTxt + '</td>' +
+    '</tr>';
+  });
+  // Sin nombres de usuario aquí: solo meses y números, innerHTML es seguro
+  $('tabla-meses').innerHTML =
+    '<thead><tr><th>Mes</th><th>Inicio</th><th>Ingresos</th><th>Gastos</th>' +
+    '<th>Neto</th><th>Fin</th><th>%</th></tr></thead><tbody>' + filas.join('') + '</tbody>';
+}
+
+/** (3) Tarjetas de insight: mejor/peor mes, promedio de gasto 3M, tasa de ahorro. */
+function renderInsights() {
+  var mesHoy = datos.hoy.substring(0, 7);
+  // Ingresos/gastos/neto se conocen para todo mes con actividad, así que
+  // mejor/peor mes y el promedio pueden mirar más atrás que la fecha de corte.
+  var conDatos = mesesVisibles();
+
+  function tarjeta(k, v, s, clase) {
+    return '<div class="insight"><div class="k">' + k + '</div>' +
+      '<div class="v ' + (clase || '') + '">' + v + '</div>' +
+      '<div class="s">' + (s || '') + '</div></div>';
+  }
+
+  // Mejor y peor mes por neto (solo meses ya cerrados: el actual va a medias)
+  var cerrados = conDatos.filter(function (m) { return m.mes !== mesHoy; });
+  var mejor = null, peor = null;
+  cerrados.forEach(function (m) {
+    var neto = m.ingresos - m.gastos;
+    if (!mejor || neto > (mejor.ingresos - mejor.gastos)) mejor = m;
+    if (!peor || neto < (peor.ingresos - peor.gastos)) peor = m;
+  });
+
+  // Promedio de gasto de los últimos 3 meses cerrados
+  var ult3 = cerrados.slice(-3);
+  var promGasto = ult3.length ? ult3.reduce(function (a, m) { return a + m.gastos; }, 0) / ult3.length : 0;
+
+  // Tasa de ahorro del mes en curso: (ingresos − gastos) / ingresos
+  var act = datos.resumen.mesActual;
+  var tasaAhorro = act.ingresos > 0 ? Math.round((act.ingresos - act.gastos) / act.ingresos * 100) : null;
+
+  var html = '';
+  html += tarjeta('Mejor mes', mejor ? '+' + fmtBase(mejor.ingresos - mejor.gastos) : '—',
+    mejor ? nombreMes(mejor.mes) : 'sin datos', 'verde');
+  html += tarjeta('Peor mes', peor ? fmtBase(peor.ingresos - peor.gastos) : '—',
+    peor ? nombreMes(peor.mes) : 'sin datos', peor && (peor.ingresos - peor.gastos) < 0 ? 'rojo' : '');
+  html += tarjeta('Gasto prom. 3M', ult3.length ? fmtBase(Math.round(promGasto)) : '—',
+    ult3.length ? 'últimos ' + ult3.length + ' meses' : 'sin datos');
+  html += tarjeta('Tasa de ahorro', tasaAhorro === null ? '—' : tasaAhorro + '%',
+    'este mes', tasaAhorro === null ? '' : (tasaAhorro >= 0 ? 'verde' : 'rojo'));
+  $('insights').innerHTML = html;
+}
+
+/** (4) Composición del patrimonio por cuenta: hoy vs hace 3 y 6 meses (barras apiladas). */
+function renderComposicion() {
+  var activos = cuentasActivas();
+  var todos = datos.resumen.meses; // cronológico, 12
+  var idxHoy = todos.length - 1;
+
+  // Snapshots disponibles: hace 6m, hace 3m, hoy (los que existan en el rango)
+  var snaps = [];
+  if (idxHoy - 6 >= 0) snaps.push({ etq: 'Hace 6m', mes: todos[idxHoy - 6] });
+  if (idxHoy - 3 >= 0) snaps.push({ etq: 'Hace 3m', mes: todos[idxHoy - 3] });
+  snaps.push({ etq: 'Hoy', mes: null });
+
+  var vacia = activos.length === 0 || snaps.length < 2;
+  $('composicion-vacia').hidden = !vacia;
+  $('chart-composicion').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+
+  var datasets = activos.map(function (c, i) {
+    return {
+      label: c.cuenta,
+      backgroundColor: c.color || PALETA[i % PALETA.length],
+      borderRadius: 4,
+      data: snaps.map(function (s) {
+        // COP: snapshot pasado usa inicioPorCuenta; "Hoy" usa el saldo actual
+        var nativo = s.mes ? (s.mes.inicioPorCuenta[c.cuenta] || 0) : c.saldo;
+        return Math.max(0, nativo) * (c.tasa !== undefined ? c.tasa : 1);
+      })
+    };
+  });
+
+  // Firma: si el patrimonio por cuenta no cambió, no hay nada que redibujar
+  var firmaComp = monedaBase + '|' + snaps.map(function (s) { return s.etq; }).join(',') + '|' +
+    datasets.map(function (d) { return d.label + ':' + d.data.join(','); }).join(';');
+  var igualComp = mismaFirma('composicion', firmaComp);
+  if (chartComposicion && igualComp) return;
+  if (chartComposicion) { chartComposicion.destroy(); chartComposicion = null; }
+  chartComposicion = new Chart($('chart-composicion'), {
+    type: 'bar',
+    data: { labels: snaps.map(function (s) { return s.etq; }), datasets: datasets },
+    options: {
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+      },
+      scales: {
+        x: { stacked: true },
+        y: { stacked: true, ticks: { callback: function (v, i, ticks) { return etiquetaEjeBase(v, ticks); } } }
+      }
+    }
+  });
+}
+
+/** (5) Gasto de las 3–5 categorías top en el tiempo (líneas por mes). */
+function renderCatsTiempo() {
+  var meses = datos.resumen.meses.slice(-6); // últimos 6 meses, legible
+  // Total por categoría en el rango para elegir las top
+  var totales = {};
+  meses.forEach(function (m) {
+    Object.keys(m.gastosPorCategoria).forEach(function (cat) {
+      totales[cat] = (totales[cat] || 0) + m.gastosPorCategoria[cat];
+    });
+  });
+  var top = Object.keys(totales).sort(function (a, b) { return totales[b] - totales[a]; }).slice(0, 5);
+  var vacia = top.length === 0;
+  $('cats-tiempo-vacia').hidden = !vacia;
+  $('chart-cats-tiempo').parentElement.style.display = vacia ? 'none' : 'block';
+  if (vacia) return;
+
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  var datasets = top.map(function (cat, i) {
+    return {
+      label: (iconos[cat] || '') + ' ' + cat,
+      data: meses.map(function (m) { return m.gastosPorCategoria[cat] || 0; }),
+      borderColor: PALETA[i % PALETA.length],
+      backgroundColor: PALETA[i % PALETA.length],
+      tension: 0.3, pointRadius: 2, borderWidth: 2, fill: false
+    };
+  });
+  var firmaCats = monedaBase + '|' + meses.map(function (m) { return m.mes; }).join(',') + '|' +
+    datasets.map(function (d) { return d.label + ':' + d.data.join(','); }).join(';');
+  var igualCats = mismaFirma('catsTiempo', firmaCats);
+  if (chartCatsTiempo && igualCats) return;
+  if (chartCatsTiempo) { chartCatsTiempo.destroy(); chartCatsTiempo = null; }
+  chartCatsTiempo = new Chart($('chart-cats-tiempo'), {
+    type: 'line',
+    data: { labels: meses.map(function (m) { return nombreMes(m.mes); }), datasets: datasets },
+    options: {
+      maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { boxWidth: 12, font: { size: 11 } } },
+        tooltip: { callbacks: { label: function (ctx) { return ' ' + ctx.dataset.label + ': ' + fmtBase(ctx.parsed.y); } } }
+      },
+      scales: { y: { ticks: { callback: function (v, i, ticks) { return etiquetaEjeBase(v, ticks); } } } }
+    }
+  });
+}
+
+function abrirMes(m) {
+  mesAbierto = m;
+  ajusteMesCuenta = null;
+  ajusteMesModo = 'mov';
+  var antesDelCorte = m.mes < corteMesGlobal();
+  $('mes-titulo').textContent = nombreMes(m.mes);
+  $('mes-inicio').textContent = antesDelCorte ? '—' : fmtBase(m.inicio);
+  $('mes-ingresos').textContent = fmtBase(m.ingresos);
+  $('mes-gastos').textContent = fmtBase(m.gastos);
+  var neto = m.ingresos - m.gastos;
+  $('mes-neto').textContent = fmtBase(neto);
+  $('mes-neto').className = neto >= 0 ? 'verde' : 'rojo';
+  $('mes-ajuste').hidden = true;
+
+  // Una fila por cuenta. Tres casos según el mes y la fecha de corte:
+  //  - mes posterior al corte  -> "⚖️ Ajustar" (movimiento el último día del mes anterior)
+  //  - mes DEL corte           -> el inicio ES el saldo inicial -> "✏️ Saldo inicial"
+  //  - mes anterior al corte   -> sin dato (está dentro del saldo inicial)
+  var cont = $('mes-cuentas');
+  cont.innerHTML = '';
+  var fechaAjuste = ultimoDiaMesAnteriorCli(m.mes);
+  var huboSinDato = false;
+  datos.cuentas.forEach(function (c) {
+    var fila = document.createElement('div');
+    fila.className = 'ajuste-fila';
+    var nom = document.createElement('span');
+    nom.textContent = c.cuenta;
+    var der = document.createElement('b');
+    fila.appendChild(nom);
+    fila.appendChild(der);
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn-mini';
+    if (fechaAjuste >= c.fechaCorte) {
+      der.textContent = fmtNativo(m.inicioPorCuenta[c.cuenta], c.moneda);
+      btn.textContent = '⚖️ Ajustar';
+      btn.onclick = function () { elegirAjusteMes(c, 'mov'); };
+      fila.appendChild(btn);
+    } else if (m.mes === c.fechaCorte.substring(0, 7)) {
+      der.textContent = fmtNativo(c.saldoInicial, c.moneda);
+      btn.textContent = '✏️ Saldo inicial';
+      btn.onclick = function () { elegirAjusteMes(c, 'si'); };
+      fila.appendChild(btn);
+    } else {
+      der.textContent = '—';
+      huboSinDato = true;
+    }
+    cont.appendChild(fila);
+  });
+  $('mes-nota').textContent = huboSinDato
+    ? 'Las cuentas con "—" no tienen datos de este mes: es anterior a su fecha de corte, así que ya está contenido en su saldo inicial.'
+    : (m.mes === corteMesGlobal()
+        ? 'Este es el mes de la fecha de corte: su inicio es el saldo inicial de cada cuenta, editable con ✏️.'
+        : 'El ajuste crea un movimiento el ' + fechaAjuste + ' para que este mes empiece con el valor que digas.');
+  $('modal-mes').hidden = false;
+}
+function cerrarMes() { $('modal-mes').hidden = true; mesAbierto = null; ajusteMesCuenta = null; }
+
+function elegirAjusteMes(c, modo) {
+  ajusteMesCuenta = c;
+  ajusteMesModo = modo;
+  var base = modo === 'si' ? c.saldoInicial : mesAbierto.inicioPorCuenta[c.cuenta];
+  $('mes-ajuste-titulo').textContent = modo === 'si'
+    ? 'Saldo inicial de ' + c.cuenta + ' (' + c.fechaCorte + ')'
+    : 'Inicio real de ' + c.cuenta + ' en ' + nombreMes(mesAbierto.mes);
+  $('mes-ajuste-valor').value = montoATexto(base);
+  $('mes-ajuste-simbolo').textContent = simboloDe(c.moneda);
+  $('mes-ajuste').hidden = false;
+  actualizarDifMes();
+  $('mes-ajuste-valor').focus();
+}
+
+function actualizarDifMes() {
+  if (!ajusteMesCuenta || !mesAbierto) return;
+  var real = parsearMonto($('mes-ajuste-valor').value);
+  var elDif = $('mes-ajuste-dif'), elExplica = $('mes-ajuste-explica');
+  if (isNaN(real)) {
+    elDif.textContent = '—'; elDif.className = ''; elExplica.textContent = '';
+    $('mes-ajuste-guardar').disabled = true;
+    return;
+  }
+  var base = ajusteMesModo === 'si'
+    ? ajusteMesCuenta.saldoInicial
+    : mesAbierto.inicioPorCuenta[ajusteMesCuenta.cuenta];
+  var dif = real - base;
+  if (Math.abs(dif) < 0.01) dif = 0;
+  var mon = ajusteMesCuenta.moneda;
+  $('mes-ajuste-guardar').disabled = false;
+  elDif.textContent = (dif > 0 ? '+' : '') + fmtNativo(dif, mon);
+  elDif.className = dif === 0 ? '' : (dif > 0 ? 'verde' : 'rojo');
+  if (dif === 0) {
+    elExplica.textContent = '✔ Ya está cuadrado, no se cambiará nada.';
+  } else if (ajusteMesModo === 'si') {
+    elExplica.textContent = 'Se cambiará el saldo inicial de ' + ajusteMesCuenta.cuenta +
+      ' a ' + fmtNativo(real, mon) + '; el saldo actual se recalcula solo (no crea movimientos).';
+  } else {
+    elExplica.textContent = 'Se creará un ' + (dif > 0 ? 'Ingreso' : 'Gasto') + ' de ' + fmtNativo(Math.abs(dif), mon) +
+      ' en ' + ajusteMesCuenta.cuenta + ' con fecha ' + ultimoDiaMesAnteriorCli(mesAbierto.mes) +
+      ' (categoría Ajuste).';
+  }
+}
+
+function guardarAjusteMes() {
+  var real = parsearMonto($('mes-ajuste-valor').value);
+  if (isNaN(real)) return toast('Escribe el saldo con el que empezó', 'error');
+  var cuenta = ajusteMesCuenta.cuenta, mes = mesAbierto.mes, modo = ajusteMesModo;
+  cerrarMes();
+  if (modo === 'si') llamar('editarCuenta', [cuenta, { saldoInicial: real }]);
+  else llamar('ajustarInicioMes', [cuenta, mes, real]);
+}
+
+/** Conecta Evolucion: el modal de un mes y los chips de vista de las graficas. */
+function conectarEvolucion() {
+  // Modal de mes (detalle + ajuste del inicio)
+  $('mes-cerrar').onclick = cerrarMes;
+  $('modal-mes').onclick = function (e) { if (e.target === this) cerrarMes(); };
+  $('mes-ajuste-valor').addEventListener('input', function () {
+    formatearMontoEnVivo(this, true);
+    actualizarDifMes();
+  });
+  $('mes-ajuste-guardar').onclick = guardarAjusteMes;
+
+  // Vistas de cada grafica (dona/lista, I vs G/neto, por mes/por dia)
+  document.querySelectorAll('[data-vbarras]').forEach(function (b) {
+    b.onclick = function () {
+      vistaBarras = b.dataset.vbarras;
+      localStorage.setItem('vistaBarras', vistaBarras);
+      renderEvolucion();
+    };
+  });
+  document.querySelectorAll('[data-vcats]').forEach(function (b) {
+    b.onclick = function () {
+      vistaCats = b.dataset.vcats;
+      localStorage.setItem('vistaCats', vistaCats);
+      renderEvolucion();
+    };
+  });
+  $('chip-gran').onclick = function () {
+    granBarras = granBarras === 'dia' ? 'mes' : 'dia';
+    localStorage.setItem('granBarras', granBarras);
+    renderEvolucion();
+  };
+}
+</script>

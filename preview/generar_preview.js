@@ -1,8 +1,8 @@
 /**
  * Genera preview/preview.html: la app completa corriendo SIN Google.
  *
- * Une index.html + styles.html + app.html igual que lo hace Apps Script con
- * los include(), y reemplaza google.script.run por un simulador con datos de
+ * Une index.html con todos sus include() (estilos-*.html, app-*.html) igual que
+ * lo hace Apps Script, y reemplaza google.script.run por un simulador con datos de
  * EJEMPLO en memoria. No toca la hoja de cálculo real para nada.
  *
  * Uso:  node preview/generar_preview.js
@@ -13,8 +13,6 @@ const path = require('path');
 const RAIZ = path.join(__dirname, '..');
 
 let html = fs.readFileSync(path.join(RAIZ, 'index.html'), 'utf8');
-const styles = fs.readFileSync(path.join(RAIZ, 'styles.html'), 'utf8');
-const app = fs.readFileSync(path.join(RAIZ, 'app.html'), 'utf8');
 
 const mock = `<script>
 // ============ SIMULADOR de google.script.run (solo preview local) ============
@@ -51,6 +49,11 @@ const mock = `<script>
   var MONEDAS_MOCK = ['COP', 'USD', 'EUR', 'GBP', 'BRL', 'MXN', 'ARS', 'CLP', 'PEN', 'CAD', 'CHF', 'JPY'];
   var monedaBaseMock = 'COP';
   var catsOcultasMock = [];
+  // Movimientos que se repiten cada mes (hoja Recurrentes)
+  var recurrentesMock = [
+    { id: 1, activo: true, dia: 5, tipo: 'Gasto', cuenta: 'Billetera', cuentaDestino: '',
+      categoria: 'Gym', descripcion: 'Mensualidad gimnasio', valor: 65000, ultimoMes: '' }
+  ];
   function tasaDeCuentaMock(c) {
     return (!c.moneda || c.moneda === 'COP') ? 1 : (tasasMock[c.moneda] ? tasasMock[c.moneda].tasa : 0);
   }
@@ -85,6 +88,23 @@ const mock = `<script>
     { id: 10, fecha: '2026-07-10', cuenta: 'Cuenta Ahorros', tipo: 'Transferencia', cuentaDestino: 'Cuenta USD', categoria: '', descripcion: 'Compra de dólares', valor: 200000, valorDestino: 48.5 },
     { id: 11, fecha: '2026-07-12', cuenta: 'Cuenta USD', tipo: 'Ingreso', cuentaDestino: '', categoria: 'Trabajo', descripcion: 'Pago en dólares', valor: 25 }
   ];
+  // Relleno para poder probar la paginación del historial ("Cargar más"): el
+  // servidor manda 300 por página, así que hacen falta más de 300 en total.
+  (function () {
+    var cats = ['Comida', 'Transporte', 'Servicios', 'Gym'];
+    for (var i = 0; i < 340; i++) {
+      var dia = (i % 28) + 1;
+      var mes = (i % 6) + 1;
+      movimientos.push({
+        id: 1000 + i,
+        fecha: '2025-' + ('0' + mes).slice(-2) + '-' + ('0' + dia).slice(-2),
+        cuenta: 'Billetera', tipo: 'Gasto', cuentaDestino: '',
+        categoria: cats[i % cats.length], descripcion: 'Movimiento viejo ' + (i + 1),
+        valor: 1000 + (i % 50) * 100
+      });
+    }
+  })();
+
   window.fallarProximaEscritura = false; // ponlo en true en la consola para simular un error
 
   function hoyISO() {
@@ -168,7 +188,25 @@ const mock = `<script>
 
   function maxId() { return movimientos.reduce(function (a, m) { return Math.max(a, m.id); }, 0); }
 
+  /** Espejo de generarRecurrentes_: crea lo que toca este mes, una sola vez. */
+  function generarRecurrentesMock() {
+    var hoy = hoyISO();
+    var mesHoy = hoy.substring(0, 7), diaHoy = Number(hoy.substring(8, 10));
+    recurrentesMock.forEach(function (r) {
+      if (!r.activo || r.ultimoMes === mesHoy || diaHoy < r.dia) return;
+      if (!(r.valor > 0) || !r.cuenta) return;
+      movimientos.push({
+        id: maxId() + 1,
+        fecha: mesHoy + '-' + ('0' + r.dia).slice(-2),
+        cuenta: r.cuenta, tipo: r.tipo, cuentaDestino: r.cuentaDestino,
+        categoria: r.categoria, descripcion: r.descripcion, valor: r.valor
+      });
+      r.ultimoMes = mesHoy;
+    });
+  }
+
   function getDatosMock() {
+    generarRecurrentesMock();
     var saldos = calcularSaldosMock();
     var pat = 0;
     var usadas = {}, catsUsadas = {};
@@ -223,7 +261,9 @@ const mock = `<script>
       return a.fecha === b.fecha ? b.id - a.id : (a.fecha < b.fecha ? 1 : -1);
     });
     return {
-      cuentas: cts, categorias: cats, movimientos: ordenados.slice(0, 300),
+      cuentas: cts, categorias: cats,
+      movimientos: ordenados.slice(0, 300),
+      totalMovimientos: ordenados.length,
       resumen: { mesActual: { mes: mesHoy, ingresos: act.ingresos, gastos: act.gastos, neto: act.ingresos - act.gastos },
                  meses: meses.map(function (m) { return porMes[m]; }) },
       presupuestos: presupuestos.map(function (p) { return Object.assign({}, p); }),
@@ -231,8 +271,10 @@ const mock = `<script>
       tasas: JSON.parse(JSON.stringify(tasasMock)),
       monedaBase: monedaBaseMock,
       catsOcultas: catsOcultasMock.slice(),
+      recurrentes: recurrentesMock.map(function (r) { return Object.assign({}, r); }),
       historia: calcularHistoriaMock(hoy),
       hojaUrl: 'https://docs.google.com/spreadsheets/d/EJEMPLO/edit',
+      csvUrl: 'https://docs.google.com/spreadsheets/d/EJEMPLO/export?format=csv&gid=0',
       hoy: hoy
     };
   }
@@ -248,6 +290,34 @@ const mock = `<script>
 
   var api = {
     getDatos: function () { return getDatosMock(); },
+    getMasMovimientos: function (desde, cuantos) {
+      var ordenados = movimientos.slice().sort(function (a, b) {
+        return a.fecha === b.fecha ? b.id - a.id : (a.fecha < b.fecha ? 1 : -1);
+      });
+      var ini = Math.max(0, Number(desde) || 0);
+      var n = Math.min(Number(cuantos) || 300, 500);
+      return { movimientos: ordenados.slice(ini, ini + n), total: ordenados.length };
+    },
+    guardarRecurrente: function (r) {
+      if (!(Number(r.valor) > 0)) throw new Error('El valor debe ser mayor que cero.');
+      if (!buscarCuenta(r.cuenta)) throw new Error('La cuenta "' + r.cuenta + '" no existe.');
+      var dia = Math.min(28, Math.max(1, Number(r.dia) || 1));
+      var existente = recurrentesMock.filter(function (x) { return x.id === Number(r.id); })[0];
+      if (existente) {
+        // Al editar se conserva ultimoMes: si no, se volvería a generar el mes
+        Object.assign(existente, r, { dia: dia, valor: Number(r.valor), id: existente.id, ultimoMes: existente.ultimoMes });
+      } else {
+        var maxR = recurrentesMock.reduce(function (a, x) { return Math.max(a, x.id); }, 0);
+        recurrentesMock.push(Object.assign({}, r, { id: maxR + 1, dia: dia, valor: Number(r.valor), ultimoMes: '' }));
+      }
+      return getDatosMock();
+    },
+    eliminarRecurrente: function (id) {
+      var i = recurrentesMock.findIndex(function (x) { return x.id === Number(id); });
+      if (i < 0) throw new Error('No encontré ese movimiento recurrente.');
+      recurrentesMock.splice(i, 1);
+      return getDatosMock();
+    },
     guardarMonedaBase: function (codigo) {
       codigo = String(codigo || '').trim().toUpperCase();
       if (MONEDAS_MOCK.indexOf(codigo) < 0) throw new Error('Moneda no válida: ' + codigo);
@@ -270,11 +340,19 @@ const mock = `<script>
     },
     guardarCatsOcultas: function (lista) {
       var arr = (lista && lista.length !== undefined && typeof lista !== 'string') ? lista : String(lista || '').split('|');
-      catsOcultasMock = arr.map(function (s) { return String(s).trim(); }).filter(function (s) { return s; });
+      // Solo categorías que existen (espejo del backend): sin nombres fantasma
+      var existentes = categorias.map(function (c) { return c.categoria; });
+      catsOcultasMock = arr.map(function (s) { return String(s).trim(); })
+        .filter(function (s) { return s && existentes.indexOf(s) >= 0; });
       return getDatosMock();
     },
     agregarMovimiento: function (mov) {
       if (window.fallarProximaEscritura) { window.fallarProximaEscritura = false; throw new Error('Error simulado del servidor'); }
+      // Idempotencia por uid (espejo del backend): reintentar algo que ya se
+      // escribió NO debe duplicarlo.
+      if (mov && mov.uid && movimientos.some(function (m) { return m.uid === mov.uid; })) {
+        return getDatosMock();
+      }
       if (!(Number(mov.valor) > 0)) throw new Error('El valor debe ser un número mayor que cero.');
       var esDoble = (mov.tipo === 'Transferencia' || mov.tipo === 'Pago tarjeta');
       if (esDoble) {
@@ -489,8 +567,23 @@ const mock = `<script>
 // secuencias $$, $&, $` y $' del texto de reemplazo como patrones especiales,
 // y el código de la app tiene muchos '$' (fmtCOP, 'US$', '$'...): con un string
 // llano, un "$'" se convertía en "el resto de la cadena" y rompía el preview.
-html = html.replace("<?!= include('styles'); ?>", function () { return styles; });
-html = html.replace("<?!= include('app'); ?>", function () { return mock + '\n' + app; });
+// Resuelve CUALQUIER <?!= include('X'); ?> leyendo X.html, igual que Apps Script.
+// Así el preview no hay que tocarlo cada vez que se agrega un módulo nuevo.
+//
+// OJO: reemplazo con FUNCIÓN, no con string. String.replace interpreta las
+// secuencias $$, $&, $` y $' del texto de reemplazo como patrones especiales,
+// y el código de la app tiene muchos '$' (fmtBase, 'US$', '$'...).
+let primerScript = true;
+html = html.replace(/<\?!=\s*include\('([\w-]+)'\);?\s*\?>/g, function (_, nombre) {
+  const contenido = fs.readFileSync(path.join(RAIZ, nombre + '.html'), 'utf8');
+  // El mock de google.script.run va ANTES del primer módulo de lógica, para que
+  // exista cuando el arranque lo llame.
+  if (!nombre.startsWith('estilos') && primerScript) {
+    primerScript = false;
+    return mock + '\n' + contenido;
+  }
+  return contenido;
+});
 if (html.includes('<?!=')) throw new Error('Quedó un include sin reemplazar');
 fs.writeFileSync(path.join(__dirname, 'preview.html'), html);
 console.log('Listo: abre en el navegador -> ' + path.join(__dirname, 'preview.html'));

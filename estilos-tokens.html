@@ -1,0 +1,194 @@
+<style>
+  /* =====================================================================
+     Finanzas App — TOKENS
+     El único sitio donde hay números y colores sueltos. Todo lo demás
+     (base, componentes, vistas) sale de aquí con var(--x).
+
+     El CSS está repartido en cuatro archivos que index.html incluye en este
+     orden — el orden IMPORTA, porque la cascada resuelve los empates:
+       estilos-tokens.html       variables, reset            (este archivo)
+       estilos-base.html         etiquetas HTML y la tarjeta
+       estilos-componentes.html  piezas reutilizables (chip, botón, modal…)
+       estilos-vistas.html       lo propio de cada vista + el bloque de PC
+
+     CONVENCIÓN DE NOMBRES (español, kebab-case):
+       bloque        .tarjeta-cuenta   .transfer-card   .chip-red
+       elemento      clase corta seleccionada por descendencia:
+                     .tarjeta-cuenta .saldo   .mov .monto
+       modificador   clase suelta que se COMBINA y nunca va sola:
+                     .activa  .compacto  .oculta  .peligro  .mini
+       estado        atributo, cuando el navegador ya lo da:
+                     [hidden]  [disabled]  [aria-pressed="true"]
+
+     REGLA DE TOKENS: todo espaciado, radio, sombra, color, alto de control y
+     medida de layout sale de aquí. Se quedan como literal, dentro de la regla
+     del componente al que pertenecen, las medidas INTRÍNSECAS de una pieza
+     concreta que no se reutilizan en ningún otro sitio (el 38px de un swatch,
+     el 42px del spinner, el grosor de un trazo).
+     ===================================================================== */
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  /* El atributo `hidden` solo lo aplica la hoja de estilos del navegador
+     (`[hidden]{display:none}`), y CUALQUIER `display` de autor le gana: por eso
+     .mini{display:block} dejaba visible el equivalente en dólares en todas las
+     cuentas. Esta regla lo zanja de una vez para todo el documento. */
+  [hidden] { display: none !important; }
+
+  :root {
+    /* ---------------------------------------------------------- Espaciado
+       Escala base 4/8/12/16/24/32. Los pasos intermedios que el diseño usa de
+       verdad llevan nombre propio, para que no vuelvan a aparecer como números
+       sueltos repartidos por el archivo. */
+    --e0: 2px;
+    --e1: 4px;
+    --e1b: 6px;
+    --e2: 8px;
+    --e2b: 10px;
+    --e3: 12px;
+    --e3b: 14px;
+    --e4: 16px;
+    --e4b: 20px;
+    --e5: 24px;
+    --e5b: 28px;
+    --e6: 32px;
+    --e7: 40px;
+    /* Alias con el papel que cumplen, para que se lea la intención */
+    --gap-chip: var(--e1b);     /* icono ↔ texto dentro de un mismo control */
+    --pad-fila: var(--e2b);     /* aire vertical de una fila de lista */
+    --pad-tarjeta: var(--e3b);  /* padding lateral de tarjeta */
+    --pad-modal: 18px;          /* padding lateral del modal en móvil */
+
+    /* ------------------------------------------- Alturas de control (táctil)
+       Nada por debajo de --alto-toque-min: es el mínimo cómodo con el pulgar. */
+    --alto-min: 36px;       /* botón mini (acciones secundarias) */
+    --alto-chico: 40px;     /* chip de rango de gráfica */
+    --alto-toque-min: 44px;
+    --alto-toque: 48px;     /* chip, input, select, botón secundario */
+    --alto-cta: 56px;       /* botón principal */
+    --alto-nav: 60px;
+    --alto-tipo: 64px;      /* botón de tipo de movimiento */
+
+    /* ------------------------------------------------------------- Radios */
+    --radio: 16px;          /* tarjetas y modales */
+    --radio-chip: 10px;     /* chips, inputs, botones pequeños */
+    --radio-pildora: 999px; /* toast, FAB, badges */
+
+    /* --------------------------------------------------------- Tipografía
+       Los inputs van en --t-boton (16px) para que iOS no haga zoom al enfocar. */
+    --t-nano: 10.5px;       /* badges */
+    --t-micro: 11px;        /* rótulos de tabla, roles */
+    --t-mini: 11.5px;       /* etiquetas bajo un icono */
+    --t-seccion: 12px;      /* etiquetas de sección, MAYÚSCULAS */
+    --t-caption: 12.5px;    /* subtextos */
+    --t-nota: 13px;         /* notas y ayudas */
+    --t-dato: 13.5px;       /* dato secundario legible */
+    --t-lista: 14px;        /* filas de lista */
+    --t-enlace: 14.5px;
+    --t-cuerpo: 15px;
+    --t-cifra-chica: 15.5px;
+    --t-boton: 16px;
+    --t-cifra: 17px;        /* saldos en tarjetas */
+    --t-subtitulo: 18px;    /* h2 de modal, marca del sidebar */
+    --t-titulo: 22px;
+    --t-monto-chico: 24px;  /* campo de monto compacto (modales) */
+    --t-cifra-grande: 32px;
+    --t-monto: 34px;        /* campo de monto de Registrar */
+    /* Solo en escritorio */
+    --t-cifra-pc: 19px;
+    --t-titulo-pc: 26px;
+    --t-cifra-grande-pc: 40px;
+
+    /* ------------------------------------------------------------ Iconos */
+    --ic: 20px;
+    --ic-mini: 16px;
+    --ic-nav: 22px;
+
+    /* ------------------------------------------------------------ Layout
+       OJO: las media queries NO pueden leer variables; --bp-pc está aquí como
+       documentación del corte, pero el 900px va escrito en cada @media. */
+    --bp-pc: 900px;
+    --ancho-movil: 480px;      /* la columna de contenido en el celular */
+    --ancho-nav: 220px;        /* menú lateral en PC */
+    --ancho-contenido: 1100px; /* tope para que las tarjetas no se deformen */
+    --ancho-modal-pc: 460px;
+    --min-tarjeta: 180px;      /* ancho mínimo de una tarjeta en una grilla que fluye */
+    --min-chip: 150px;         /* chip de cuenta: lleva punto, nombre y moneda */
+    /* Ancho mínimo del chip de categoría. 158px es lo que necesita el nombre más
+       largo que se usa ("Entre cuentas", "Rendimientos") para caber ENTERO: por
+       debajo de eso la grilla mete una columna más y los nombres salen con "…",
+       que era justo lo que veníamos a arreglar. */
+    --min-chip-cat: 158px;
+    --alto-lienzo: 220px;      /* caja de una gráfica */
+    --alto-lienzo-alto: 260px;
+    --alto-lienzo-pc: 300px;
+    --alto-lienzo-alto-pc: 320px;
+
+    /* ----------------------------------------------------------- Duración */
+    --trans: .16s;
+
+    /* -------------------------------------------------- Paleta clara
+       Fondo neutro y 3 niveles de elevación (fondo/tarjeta/suave). Un solo azul
+       de acento; verde/rojo/ámbar SOLO para dinero y semáforos. */
+    --fondo: #F7F8FA;
+    --tarjeta: #FFFFFF;
+    --suave: #F2F4F7;
+    --primario: #1A73E8;      /* fondos de acento (botón principal, patrimonio) */
+    --acento: #1A73E8;        /* textos de acento (títulos, nav activa) */
+    --acento-suave: #E8F0FE;
+    --texto: #1D2129;
+    --texto-suave: #5D6673;
+    --verde: #188038;
+    --rojo: #C5221F;
+    --ambar: #F9AB00;         /* semáforo de presupuestos */
+    --ambar-texto: #9a6a00;   /* texto ámbar legible sobre fondo claro */
+    --sobre-primario: #D2E3FC;/* textos/etiquetas sobre el fondo azul --primario */
+    --borde: #E4E7EC;
+    --borde-tarjeta: #EEF0F3; /* borde sutil de tarjetas (en oscuro es el separador real) */
+    --divisor: #EEF0F4;
+    --peligro-fondo: #FCE8E6;
+    --placeholder: #C6CBD3;
+    --spinner: #D2E3FC;
+    --velo: rgba(247,248,250,.7);
+    --overlay: rgba(29,33,41,.5);
+    --toast: #1D2129;
+    --toast-texto: #fff;
+    --sobre-color: #fff;      /* texto sobre un fondo de color pleno */
+    --sombra-1: 0 1px 2px rgba(16,24,40,.05), 0 1px 3px rgba(16,24,40,.07);
+    --sombra-2: 0 2px 4px rgba(16,24,40,.05), 0 6px 16px rgba(16,24,40,.10);
+    --sombra-3: 0 4px 8px rgba(16,24,40,.06), 0 14px 36px rgba(16,24,40,.18);
+    --sombra-nav: 0 -1px 6px rgba(0,0,0,.06);
+    color-scheme: light;
+  }
+
+  /* Modo oscuro: mismos roles, otra paleta. Los colores de cuenta (de la hoja)
+     no cambian. Las sombras casi desaparecen: separan los bordes. */
+  html[data-tema="oscuro"] {
+    --fondo: #14181D;
+    --tarjeta: #1E242B;
+    --suave: #262D35;
+    --acento: #8AB4F8;
+    --acento-suave: #1E3A5F;
+    --texto: #E8EAED;
+    --texto-suave: #9AA4B2;
+    --verde: #6DD58C;
+    --rojo: #F28B82;
+    --ambar: #FDD663;
+    --ambar-texto: var(--ambar);
+    --sobre-primario: #AECBFA;
+    --borde: #39414B;
+    --borde-tarjeta: #2C333C;
+    --divisor: #2A313A;
+    --peligro-fondo: #3A2422;
+    --placeholder: #4A525C;
+    --spinner: #2E4562;
+    --velo: rgba(20,24,29,.7);
+    --overlay: rgba(0,0,0,.6);
+    --toast: #E8EAED;
+    --toast-texto: #1D2129;
+    --sombra-1: 0 1px 2px rgba(0,0,0,.30);
+    --sombra-2: 0 2px 6px rgba(0,0,0,.35);
+    --sombra-3: 0 10px 30px rgba(0,0,0,.5);
+    color-scheme: dark;
+  }
+</style>
