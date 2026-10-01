@@ -94,20 +94,21 @@ function usarHojaVinculada() {
   return 'Listo: la app vuelve a usar "' + ss.getName() + '".';
 }
 
-// Categorías con las que arranca una hoja nueva (se editan desde Ajustes)
+// Categorías con las que arranca una hoja nueva (se editan desde Ajustes).
+// El icono va como 'i:clave' del catálogo ICONOS_CAT (app-core.html).
 var CATEGORIAS_INICIALES = [
-  ['Comida', 'Gasto', '🍔'],
-  ['Mercado', 'Gasto', '🛒'],
-  ['Transporte', 'Gasto', '🚌'],
-  ['Servicios', 'Gasto', '💡'],
-  ['Hogar', 'Gasto', '🏠'],
-  ['Salud', 'Gasto', '💊'],
-  ['Educación', 'Gasto', '🎓'],
-  ['Ocio', 'Gasto', '🎉'],
-  ['Compras', 'Gasto', '🛍️'],
-  ['Salario', 'Ingreso', '💼'],
-  ['Otros ingresos', 'Ingreso', '💰'],
-  ['Entre cuentas', 'Transferencia', '🔁']
+  ['Comida', 'Gasto', 'i:comida'],
+  ['Mercado', 'Gasto', 'i:mercado'],
+  ['Transporte', 'Gasto', 'i:bus'],
+  ['Servicios', 'Gasto', 'i:servicios'],
+  ['Hogar', 'Gasto', 'i:hogar'],
+  ['Salud', 'Gasto', 'i:salud'],
+  ['Educación', 'Gasto', 'i:educacion'],
+  ['Ocio', 'Gasto', 'i:ocio'],
+  ['Compras', 'Gasto', 'i:compras'],
+  ['Salario', 'Ingreso', 'i:salario'],
+  ['Otros ingresos', 'Ingreso', 'i:ingresos'],
+  ['Entre cuentas', 'Transferencia', 'i:transferencia']
 ];
 
 /**

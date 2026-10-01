@@ -151,17 +151,35 @@ function renderHistorial() {
  * La usan el Historial y la vista de detalle de cuenta.
  */
 function pintarMovimientos(cont, lista, iconos) {
+  // Neto de cada día (lo que entró menos lo que salió, en la moneda base):
+  // va a la derecha del encabezado del día. Transferencias y pagos no cuentan.
+  var tasa = {};
+  datos.cuentas.forEach(function (c) { tasa[c.cuenta] = c.tasa || 1; });
+  var netoDia = {};
+  lista.forEach(function (m) {
+    var v = m.tipo === 'Ingreso' ? m.valor : (m.tipo === 'Gasto' ? -m.valor : 0);
+    if (v) netoDia[m.fecha] = (netoDia[m.fecha] || 0) + v * (tasa[m.cuenta] || 1);
+  });
+
   var diaActual = '';
   lista.forEach(function (m) {
     if (m.fecha !== diaActual) {
       diaActual = m.fecha;
       var t = document.createElement('div');
       t.className = 'dia-titulo';
-      t.textContent = fechaBonita(m.fecha);
+      var f = document.createElement('span');
+      f.textContent = fechaBonita(m.fecha);
+      t.appendChild(f);
+      var n = netoDia[m.fecha];
+      if (n) {
+        var tot = document.createElement('span');
+        tot.className = 'dia-total';
+        tot.textContent = (n > 0 ? '+ ' : '− ') + fmtBase(Math.abs(n));
+        t.appendChild(tot);
+      }
       cont.appendChild(t);
     }
     var esDoble = (m.tipo === 'Transferencia' || m.tipo === 'Pago tarjeta');
-    var emojiCat = esDoble ? null : (iconos[m.categoria] || '🏷️');
     var sub = esDoble ? (m.cuenta + ' → ' + m.cuentaDestino) : m.cuenta;
     // Transferencia entre monedas: mostrar también lo que llegó al destino
     if (esDoble && m.valorDestino > 0) {
@@ -180,7 +198,7 @@ function pintarMovimientos(cont, lista, iconos) {
     var elIcono = document.createElement('div');
     elIcono.className = 'icono';
     if (esDoble) elIcono.innerHTML = icono(m.tipo === 'Pago tarjeta' ? 'tarjeta-cred' : 'transfer');
-    else elIcono.textContent = emojiCat;
+    else pintarIconoCat(elIcono, { categoria: m.categoria, icono: iconos[m.categoria] });
 
     var centro = document.createElement('div');
     centro.className = 'centro';

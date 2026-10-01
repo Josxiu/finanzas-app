@@ -23,7 +23,8 @@ function agregarCategoria(c) {
 
     var tipo = String(c.tipoSugerido || '');
     if (tipo && TIPOS_VALIDOS.indexOf(tipo) < 0) throw new Error('Tipo sugerido inválido: "' + tipo + '".');
-    var icono = textoLimitado_(c.icono, 8, 'El emoji') || '🏷️';
+    // 'i:clave' (icono del catálogo, v12) o un emoji
+    var icono = textoLimitado_(c.icono, 24, 'El icono') || 'i:otros';
 
     var hojaCat = ss.getSheetByName('Categorias');
     escribirTextoPlano_(hojaCat.getRange(hojaCat.getLastRow() + 1, 1, 1, 3), [[nombre, tipo, icono]]);
@@ -62,7 +63,7 @@ function editarCategoria(nombreActual, cambios) {
     var tipo = cambios.tipoSugerido !== undefined ? String(cambios.tipoSugerido || '') : String(filas[fila - 1][1] || '');
     if (tipo && TIPOS_VALIDOS.indexOf(tipo) < 0) throw new Error('Tipo sugerido inválido: "' + tipo + '".');
     var icono = cambios.icono !== undefined
-      ? (String(cambios.icono).trim() || '🏷️')
+      ? (textoLimitado_(cambios.icono, 24, 'El icono') || 'i:otros')
       : String(filas[fila - 1][2] || '🏷️');
 
     escribirTextoPlano_(hoja.getRange(fila, 1, 1, 3), [[nombreNuevo, tipo, icono]]);

@@ -92,7 +92,7 @@ function renderAnalisisCats() {
     arriba.className = 'an-fila-top';
     var ico = document.createElement('span');
     ico.className = 'an-ico';
-    ico.textContent = iconos[c] || '🏷️';
+    pintarIconoCat(ico, { categoria: c, icono: iconos[c] });
     var info = document.createElement('div');
     info.className = 'an-info';
     var nom = document.createElement('div');
@@ -399,7 +399,7 @@ function renderCatsTiempo() {
   datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
   var datasets = top.map(function (cat, i) {
     return {
-      label: (iconos[cat] || '') + ' ' + cat,
+      label: cat, // sin emoji: las gráficas no pintan los iconos SVG
       data: meses.map(function (m) { return m.gastosPorCategoria[cat] || 0; }),
       borderColor: PALETA[i % PALETA.length],
       backgroundColor: PALETA[i % PALETA.length],
@@ -572,20 +572,20 @@ function conectarEvolucion() {
   document.querySelectorAll('[data-vbarras]').forEach(function (b) {
     b.onclick = function () {
       vistaBarras = b.dataset.vbarras;
-      localStorage.setItem('vistaBarras', vistaBarras);
+      guardarPref('vistaBarras', vistaBarras);
       renderEvolucion();
     };
   });
   document.querySelectorAll('[data-vcats]').forEach(function (b) {
     b.onclick = function () {
       vistaCats = b.dataset.vcats;
-      localStorage.setItem('vistaCats', vistaCats);
+      guardarPref('vistaCats', vistaCats);
       renderEvolucion();
     };
   });
   $('chip-gran').onclick = function () {
     granBarras = granBarras === 'dia' ? 'mes' : 'dia';
-    localStorage.setItem('granBarras', granBarras);
+    guardarPref('granBarras', granBarras);
     renderEvolucion();
   };
 }

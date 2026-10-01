@@ -666,7 +666,7 @@ function renderGraficaCategorias() {
   chartDona = new Chart($('chart-dona'), {
     type: 'doughnut',
     data: {
-      labels: etiquetas.map(function (e) { return (iconos[e] || '') + ' ' + e; }),
+      labels: etiquetas, // sin emoji: las gráficas no pintan los iconos SVG
       datasets: [{
         data: etiquetas.map(function (e) { return g[e]; }),
         // Índice módulo N: con más categorías que colores se reciclan en orden
@@ -709,7 +709,9 @@ function renderListaCats(etiquetas, g, total, iconos) {
     var info = document.createElement('div');
     info.className = 'fila-cat-info';
     var nombre = document.createElement('span');
-    nombre.textContent = (iconos[cat] || '🏷️') + ' ' + cat; // textContent: viene de la hoja
+    nombre.className = 'con-icono';
+    nombre.appendChild(spanIconoCat(cat));
+    nombre.appendChild(document.createTextNode(cat)); // de la hoja: nodo de texto
     var monto = document.createElement('span');
     monto.className = 'monto';
     var pct = total > 0 ? Math.round(g[cat] / total * 100) : 0;
@@ -856,7 +858,7 @@ function conectarPanel() {
   document.querySelectorAll('[data-rango]').forEach(function (b) {
     b.onclick = function () {
       rangoSel = Number(b.dataset.rango);
-      localStorage.setItem('rangoGraficas', rangoSel);
+      guardarPref('rangoGraficas', rangoSel);
       renderGraficas();
       renderEvolucion();
     };

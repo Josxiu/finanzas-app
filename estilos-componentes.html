@@ -449,7 +449,10 @@
   .aj-item .ic { color: var(--texto-suave); flex: none; }
 
   /* Picker de emoji (grilla curada) */
-  .emoji-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: var(--e1); }
+  .emoji-grid {
+    display: grid; grid-template-columns: repeat(7, 1fr); gap: var(--e1b);
+    max-height: 236px; overflow-y: auto; padding: var(--e0);
+  }
   .emoji-grid button {
     aspect-ratio: 1; border: 1.5px solid transparent; border-radius: var(--radio-chip);
     background: var(--suave); font-size: var(--ic); cursor: pointer; padding: 0;

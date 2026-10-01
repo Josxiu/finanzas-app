@@ -91,9 +91,9 @@ function chipCategoria(c, activa, onclick) {
 
   var em = document.createElement('span');
   em.className = 'cat-ico';
-  em.textContent = c.icono || '🏷️';       // el emoji viene de la hoja
+  pintarIconoCat(em, c);
   var txt = document.createElement('span');
-  txt.className = 'txt';
+  txt.className = claseNombreCat(c.categoria);
   txt.textContent = c.categoria;
   b.appendChild(em);
   b.appendChild(txt);
@@ -121,7 +121,7 @@ function renderChipsRegistrar() {
 
   // Sin selección, arrancar con la última cuenta usada: un toque menos al día
   if (!cuentaSel) {
-    var ultima = localStorage.getItem('ultimaCuenta');
+    var ultima = leerPref('ultimaCuenta');
     if (ultima && origenes.some(function (c) { return c.cuenta === ultima; })) cuentaSel = ultima;
   }
 
@@ -309,7 +309,19 @@ function conectarRegistrar() {
     formatearMontoEnVivo(this, false);
     limpiarError('bloque-valor-destino');
   });
-  $('inp-fecha').addEventListener('input', function () { limpiarError('bloque-fecha'); });
+  $('inp-fecha').addEventListener('input', function () { limpiarError('bloque-fecha'); marcarFechaRapida(); });
+
+  // Hoy / Ayer: lo más común en un toque, sin abrir el calendario
+  document.querySelectorAll('.chip-fecha').forEach(function (b) {
+    b.onclick = function () {
+      var d = new Date();
+      d.setDate(d.getDate() - Number(b.dataset.dias));
+      $('inp-fecha').value = Utilities_fmt(d);
+      limpiarError('bloque-fecha');
+      marcarFechaRapida();
+    };
+  });
+  marcarFechaRapida();
 
   // Selector visual de transferencia (Origen → Destino con ⇄)
   $('tr-origen').onclick = function () { transferLado = 'origen'; renderChipsRegistrar(); };
@@ -506,7 +518,7 @@ function guardar(seguir) {
     $('inp-desc').value = '';
     $('inp-valor-destino').value = '';
     limpiarErrores();
-    localStorage.setItem('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
+    guardarPref('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
     if (seguir === true) {
       tanda.push(Object.assign({}, mov, { pendiente: !!pendiente }));
       renderTanda();
@@ -555,5 +567,15 @@ function guardar(seguir) {
       }
     })
     .agregarMovimiento(mov);
+}
+
+/** Marca "Hoy" o "Ayer" si la fecha elegida es una de esas. */
+function marcarFechaRapida() {
+  var v = $('inp-fecha').value;
+  document.querySelectorAll('.chip-fecha').forEach(function (b) {
+    var d = new Date();
+    d.setDate(d.getDate() - Number(b.dataset.dias));
+    marcarActivo(b, v === Utilities_fmt(d));
+  });
 }
 </script>

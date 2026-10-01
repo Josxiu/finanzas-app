@@ -487,4 +487,43 @@
     .modal { border-radius: var(--radio); max-width: var(--ancho-modal-pc); padding: var(--e5); }
     @keyframes subirModal { from { transform: translateY(var(--e3)) scale(.98); opacity: .6; } }
   }
+
+  /* ======================================================= Iconos de categoría
+     Al final a propósito: gana a los fondos/colores de cada contenedor
+     (.cat-ico, .an-ico, .mov .icono, .ai-emoji). El color del trazo sale del
+     tono; el fondo es ese tono muy diluido sobre la tarjeta. */
+  .ic-cat { display: inline-flex; align-items: center; justify-content: center; }
+  .mov .ic-cat .ic, .ic-cat .ic { color: inherit; stroke-width: 1.9; }
+  .ic-cat.tono-1 { color: var(--tono-1); background: color-mix(in srgb, var(--tono-1) 15%, var(--tarjeta)); }
+  .ic-cat.tono-2 { color: var(--tono-2); background: color-mix(in srgb, var(--tono-2) 15%, var(--tarjeta)); }
+  .ic-cat.tono-3 { color: var(--tono-3); background: color-mix(in srgb, var(--tono-3) 15%, var(--tarjeta)); }
+  .ic-cat.tono-4 { color: var(--tono-4); background: color-mix(in srgb, var(--tono-4) 15%, var(--tarjeta)); }
+  .ic-cat.tono-5 { color: var(--tono-5); background: color-mix(in srgb, var(--tono-5) 15%, var(--tarjeta)); }
+  .ic-cat.tono-6 { color: var(--tono-6); background: color-mix(in srgb, var(--tono-6) 15%, var(--tarjeta)); }
+  .ic-cat.tono-7 { color: var(--tono-7); background: color-mix(in srgb, var(--tono-7) 15%, var(--tarjeta)); }
+  .ic-cat.tono-8 { color: var(--tono-8); background: color-mix(in srgb, var(--tono-8) 15%, var(--tarjeta)); }
+  /* Icono pequeño delante de un nombre (presupuestos, lista de categorías) */
+  .con-icono { display: inline-flex; align-items: center; gap: var(--e2); min-width: 0; }
+  .con-icono > .ic-cat { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+  .con-icono > .ic-cat .ic { width: 15px; height: 15px; }
+  /* En el selector del editor: el elegido lleva el borde de acento */
+  .emoji-grid button.ic-cat { border: 2px solid transparent; }
+  .emoji-grid button.ic-cat .ic { width: 22px; height: 22px; }
+  .emoji-grid button.ic-cat.activa { border-color: var(--primario); }
+  .mov .icono.ic-cat .ic { width: 20px; height: 20px; }
+  .mov .icono.ic-cat { border-radius: var(--radio-chip); }
+  /* Palabra larga ("Rendimientos"): un punto menos para que quepa entera */
+  /* Encabezado de día con su neto a la derecha */
+  .dia-titulo { display: flex; justify-content: space-between; gap: var(--e2); }
+  .dia-total { font-variant-numeric: tabular-nums; }
+  /* Hoy / Ayer junto a la fecha de Registrar */
+  #bloque-fecha .etiqueta-fila { margin-bottom: var(--e1); }
+  .fecha-rapida { display: inline-flex; gap: var(--e1); }
+  .chip-fecha {
+    min-height: 32px; padding: 0 var(--e3); border-radius: var(--radio-pildora); cursor: pointer;
+    border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto-suave);
+    font: inherit; font-size: var(--t-seccion); font-weight: 700;
+  }
+  .chip-fecha.activa { background: var(--acento-suave); border-color: var(--acento-suave); color: var(--acento); }
+  .chip-cat .txt.nombre-largo { font-size: 10.5px; letter-spacing: -0.02em; }
 </style>
