@@ -726,7 +726,18 @@ var EMOJI_A_ICONO = {
   '🎮': 'juegos', '🎲': 'apuestas', '📺': 'suscripciones', '🛍': 'compras', '🎁': 'regalo',
   '💼': 'trabajo', '💰': 'ingresos', '💵': 'ingresos', '🪙': 'ingresos', '📈': 'rendimientos',
   '🐷': 'ahorro', '🏦': 'inversion', '🔁': 'transferencia', '🔄': 'transferencia', '💳': 'deudas',
-  '🧾': 'impuestos', '☂': 'seguros', '⚖': 'ajuste', '🌱': 'ahorro'
+  '🧾': 'impuestos', '☂': 'seguros', '⚖': 'ajuste', '🌱': 'ahorro',
+  // Más emojis comunes (cualquier otro cae en el icono genérico de Otros)
+  '📦': 'otros', '🗃': 'otros', '🏷': 'otros', '❓': 'otros', '🍿': 'cine', '🎫': 'ocio', '🎤': 'musica',
+  '🎧': 'musica', '📖': 'libros', '✏': 'educacion', '🏫': 'educacion', '🍷': 'fiesta', '🥂': 'fiesta',
+  '🎂': 'regalo', '🍰': 'comida', '🌮': 'comida', '🥗': 'comida', '🍜': 'comida', '🍗': 'comida',
+  '🥤': 'cafe', '🧃': 'cafe', '🏪': 'mercado', '🧺': 'mercado', '🥖': 'mercado', '🚖': 'carro', '🚙': 'carro',
+  '🛵': 'moto', '🛫': 'viajes', '🧳': 'viajes', '🏨': 'viajes', '🧹': 'hogar', '🛋': 'hogar', '🚿': 'agua',
+  '📡': 'internet', '🖥': 'tecnologia', '📷': 'tecnologia', '🔧': 'herramientas', '🔨': 'herramientas',
+  '🦷': 'salud', '👓': 'salud', '💄': 'belleza', '💅': 'belleza', '🧸': 'regalo', '👶': 'familia',
+  '❤': 'familia', '🙏': 'familia', '💸': 'deudas', '🏧': 'ingresos', '💲': 'ingresos', '💹': 'inversion',
+  '📊': 'inversion', '🪴': 'hogar', '🐕': 'mascotas', '🐈': 'mascotas', '🏀': 'deporte',
+  '🚴': 'bici', '🏃': 'deporte', '📲': 'celular', '☎': 'celular', '🎰': 'apuestas', '🃏': 'apuestas'
 };
 // Sin emoji conocido: se intenta por el NOMBRE de la categoría
 var PALABRA_A_ICONO = [
@@ -749,7 +760,7 @@ var PALABRA_A_ICONO = [
   ['nomina', 'salario'], ['rendimiento', 'rendimientos'], ['interes', 'rendimientos'], ['ahorro', 'ahorro'],
   ['inversion', 'inversion'], ['transfer', 'transferencia'], ['deuda', 'deudas'], ['tarjeta', 'deudas'],
   ['prestamo', 'deudas'], ['impuesto', 'impuestos'], ['seguro', 'seguros'], ['ajuste', 'ajuste'],
-  ['ingreso', 'ingresos'], ['extra', 'ingresos']
+  ['ingreso', 'ingresos'], ['extra', 'ingresos'], ['otro', 'otros'], ['vario', 'otros']
 ];
 
 /** Clave del icono de una categoría ({categoria, icono}), o null si es un emoji propio. */
@@ -762,7 +773,8 @@ function claveIconoCat(c) {
   for (var i = 0; i < PALABRA_A_ICONO.length; i++) {
     if (n.indexOf(PALABRA_A_ICONO[i][0]) >= 0) return PALABRA_A_ICONO[i][1];
   }
-  if (em && em !== '🏷') return null;  // un emoji que no está en el catálogo: se respeta
+  // Un emoji sin equivalente ya no se muestra: todo va con iconos de línea, y
+  // el genérico de Otros es mejor que un emoji suelto entre los demás.
   return 'otros';
 }
 

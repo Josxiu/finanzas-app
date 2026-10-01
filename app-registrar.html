@@ -519,7 +519,8 @@ function guardar(seguir) {
     $('inp-valor-destino').value = '';
     limpiarErrores();
     guardarPref('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
-    if (seguir === true) {
+    // En el Registro rápido lateral (PC ancho) no hay a dónde volver: se queda
+    if (seguir === true || registroLateral()) {
       tanda.push(Object.assign({}, mov, { pendiente: !!pendiente }));
       renderTanda();
       $('inp-monto').focus();

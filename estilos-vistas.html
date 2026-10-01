@@ -526,4 +526,65 @@
   }
   .chip-fecha.activa { background: var(--acento-suave); border-color: var(--acento-suave); color: var(--acento); }
   .chip-cat .txt.nombre-largo { font-size: 10.5px; letter-spacing: -0.02em; }
+
+  /* ============================================ Cuentas deslizables (celular)
+     En el Inicio, cuentas y deudas van en una tira que se desliza de lado:
+     se ven ~2 tarjetas y media, lo que deja claro que hay más. */
+  @media (max-width: 899px) {
+    #lista-cuentas, #lista-deudas {
+      display: flex; gap: var(--pad-fila); overflow-x: auto; scroll-snap-type: x proximity;
+      scroll-padding-inline: var(--pad-tarjeta); /* el ajuste respeta el margen, no pega al borde */
+      margin: 0 calc(-1 * var(--pad-tarjeta)) var(--e3); padding: var(--e0) var(--pad-tarjeta) var(--e1b);
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    #lista-cuentas::-webkit-scrollbar, #lista-deudas::-webkit-scrollbar { display: none; }
+    #lista-cuentas > *, #lista-deudas > * {
+      flex: none; width: 42%; min-width: 150px; max-width: 200px; scroll-snap-align: start;
+    }
+    #lista-cuentas > .agregar, #lista-deudas > .agregar { width: 34%; min-width: 120px; }
+  }
+
+  /* ================================= Registro rápido al lado del Inicio (PC ancho) */
+  .reg-lateral-tit { display: none; }
+  @media (min-width: 1200px) {
+    body.registro-lateral .contenedor {
+      max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) 360px;
+      column-gap: var(--e5); align-items: start;
+    }
+    body.registro-lateral .contenedor > header { grid-column: 1 / -1; }
+    body.registro-lateral #vista-resumen { grid-column: 1; min-width: 0; }
+    body.registro-lateral #vista-registrar {
+      display: flex !important; flex-direction: column; grid-column: 2; grid-row: 2 / span 30;
+      position: sticky; top: var(--e4); max-height: calc(100vh - 104px); overflow-y: auto; /* 104 = encabezado + aire: el pie con Guardar siempre a la vista */
+      padding: var(--e4); border-radius: calc(var(--radio) + 4px);
+      background: var(--tarjeta); border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    }
+    /* Una sola columna, en el orden del celular */
+    body.registro-lateral #vista-registrar .col { display: contents; }
+    body.registro-lateral #reg-volver { display: none; }
+    body.registro-lateral .reg-lateral-tit {
+      display: block; order: -1; font-size: var(--t-subtitulo); font-weight: 800; margin-bottom: var(--e3);
+    }
+    /* Dentro del panel los bloques no van como tarjetas sueltas */
+    body.registro-lateral #vista-registrar .tarjeta {
+      box-shadow: none; border: none; padding: 0; margin-bottom: var(--e4); background: none;
+    }
+    body.registro-lateral #vista-registrar .grupo-tipos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    body.registro-lateral #vista-registrar .btn-tipo { min-height: 56px; font-size: 11px; }
+    body.registro-lateral #vista-registrar .rejilla-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body.registro-lateral #vista-registrar .fila-doble { grid-template-columns: 1fr; }
+    /* Guardar y "Otro" fijos al pie del panel (como en el celular) */
+    body.registro-lateral #reg-acciones {
+      position: sticky; bottom: calc(-1 * var(--e4)); z-index: 2; margin: 0 calc(-1 * var(--e4));
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
+      padding: var(--e3) var(--e4) var(--e4); background: var(--tarjeta); border-top: 1px solid var(--divisor);
+    }
+    body.registro-lateral #reg-acciones #btn-guardar { order: 2; margin-top: 0; }
+    body.registro-lateral #reg-acciones #btn-guardar-otro { order: 1; }
+    body.registro-lateral #btn-guardar-otro .txt-largo { display: none; }
+    body.registro-lateral #btn-guardar-otro .txt-corto { display: inline; }
+    /* Con el panel, el Inicio tiene menos ancho: el patrimonio en una línea */
+    body.registro-lateral .patrimonio .valor-grande { font-size: 30px; white-space: nowrap; }
+    body.registro-lateral #bloque-tanda { background: var(--suave); padding: var(--e3); border-radius: var(--radio-chip); }
+  }
 </style>

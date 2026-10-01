@@ -41,6 +41,23 @@ function irA(vista) {
   if (vista === 'meses') renderEvolucion();
   if (vista === 'cuenta') renderCuentaDetalle();
   if (vista === 'ajustes') renderAjustes();
+  actualizarRegistroLateral();
+}
+
+/**
+ * Pantalla ancha (>= 1200px): en Inicio, Registrar queda abierto a la derecha
+ * como "Registro rápido". Es la MISMA vista de Registrar (mismo formulario y
+ * misma lógica), solo que el CSS la muestra al lado del Inicio.
+ */
+function esPantallaAncha() {
+  return window.matchMedia && matchMedia('(min-width: 1200px)').matches;
+}
+function registroLateral() { return document.body.classList.contains('registro-lateral'); }
+function actualizarRegistroLateral() {
+  var on = esPantallaAncha() && vistaActual === 'resumen';
+  var antes = registroLateral();
+  document.body.classList.toggle('registro-lateral', on);
+  if (on && !antes && datos) renderChipsRegistrar();
 }
 
 /** ¿Estamos en el layout de escritorio? (mismo corte que las media queries) */
@@ -53,6 +70,8 @@ function abrirRegistrar(cuentaOrigen) {
   if (cuentaOrigen) { cuentaSel = cuentaOrigen; destinoSel = ''; }
   limpiarErrores();
   renderChipsRegistrar(); // reflejar la preselección antes de mostrar la vista
+  // Con el Registro rápido a la vista no hay que ir a ninguna parte: al monto
+  if (registroLateral()) { $('inp-monto').focus(); return; }
   location.hash = '#registrar';
   // En PC el cursor entra directo al monto: es lo primero que uno escribe.
   // En el celular NO: abriría el teclado tapando media pantalla antes de que
@@ -97,6 +116,8 @@ function conectarNavegacion() {
   $('reg-volver').onclick = cerrarRegistrar;
   $('btn-refrescar').onclick = function () { cargarDatos(false, true); }; // ⟳ siempre trae fresco
   window.addEventListener('hashchange', manejarHash);
+  if (window.matchMedia) matchMedia('(min-width: 1200px)').addEventListener('change', actualizarRegistroLateral);
+  actualizarRegistroLateral();
 
   // Escape cierra lo que esté abierto, de dentro hacia fuera: primero el modal
   // que haya; si no hay ninguno, la subvista o el grupo de Ajustes.
