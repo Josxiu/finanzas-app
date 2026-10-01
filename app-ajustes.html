@@ -342,6 +342,23 @@ function renderAjustes() {
 function renderAjustesIndice() {
   var cont = $('aj-indice');
   cont.innerHTML = '';
+
+  // Arriba: dónde están TUS datos (cada persona tiene su propia hoja)
+  var perfil = document.createElement('div');
+  perfil.className = 'aj-perfil';
+  perfil.innerHTML = '<span class="aj-perfil-ico">' + icono('hoja') + '</span>' +
+    '<span class="ai-txt"><span class="mini">Tus datos están en</span><b>Tu hoja de Google</b></span>';
+  if (datos && datos.hojaUrl) {
+    var abrir = document.createElement('a');
+    abrir.className = 'btn-mini';
+    abrir.href = datos.hojaUrl;
+    abrir.target = '_blank';
+    abrir.rel = 'noopener';
+    abrir.textContent = 'Abrir';
+    perfil.appendChild(abrir);
+  }
+  cont.appendChild(perfil);
+
   GRUPOS_AJUSTES.forEach(function (g) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -602,24 +619,40 @@ function renderAjustesCats() {
   var cont = $('aj-cats-lista');
   cont.innerHTML = '';
   var ocultas = datos.catsOcultas || [];
-  datos.categorias.forEach(function (c) {
-    var esOculta = ocultas.indexOf(c.categoria) >= 0;
-    var it = document.createElement('button');
-    it.type = 'button'; it.className = 'aj-item' + (esOculta ? ' oculta' : '');
-    var em = document.createElement('span');
-    em.className = 'ai-emoji'; em.textContent = c.icono || '🏷️';
-    var txt = document.createElement('span');
-    txt.className = 'ai-txt';
-    var nom = document.createElement('b'); nom.textContent = c.categoria;
-    var sub = document.createElement('span');
-    sub.className = 'ai-saldo';
-    sub.textContent = (c.tipoSugerido ? c.tipoSugerido : 'sin tipo') + (esOculta ? ' · oculta' : '');
-    txt.appendChild(nom); txt.appendChild(sub);
-    var chev = document.createElement('span');
-    chev.innerHTML = icono('lapiz');
-    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
-    it.onclick = function () { abrirCatEditor(c); };
-    cont.appendChild(it);
+  // Cuadritos agrupados por tipo (los mismos de Registrar): se ven todas de un
+  // vistazo; las ocultas van atenuadas. Tocar una abre su editor.
+  GRUPOS_CAT.forEach(function (g) {
+    var delGrupo = datos.categorias.filter(function (c) { return esDelGrupo(c, g.tipo); });
+    if (!delGrupo.length) return;
+    var caja = document.createElement('div');
+    caja.className = 'chips-grupo';
+    var tit = document.createElement('span');
+    tit.className = 'chips-grupo-tit';
+    tit.textContent = g.titulo;
+    var rejilla = document.createElement('div');
+    rejilla.className = 'chips rejilla-cats';
+    delGrupo.forEach(function (c) {
+      var esOculta = ocultas.indexOf(c.categoria) >= 0;
+      var it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'chip chip-cat' + (esOculta ? ' oculta' : '');
+      it.title = 'Editar ' + c.categoria + (esOculta ? ' (oculta)' : '');
+      var em = document.createElement('span');
+      em.className = 'cat-ico'; em.textContent = c.icono || '🏷️';
+      var nom = document.createElement('span');
+      nom.className = 'txt'; nom.textContent = c.categoria; // de la hoja: textContent
+      it.appendChild(em); it.appendChild(nom);
+      if (esOculta) {
+        var marca = document.createElement('span');
+        marca.className = 'cat-oculta'; marca.textContent = 'Oculta';
+        it.appendChild(marca);
+      }
+      it.onclick = function () { abrirCatEditor(c); };
+      rejilla.appendChild(it);
+    });
+    caja.appendChild(tit);
+    caja.appendChild(rejilla);
+    cont.appendChild(caja);
   });
 }
 

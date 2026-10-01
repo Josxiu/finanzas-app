@@ -269,30 +269,12 @@ function renderDonde() {
     partes.push({ nombre: 'Otras', cat: null, valor: cats.slice(5).reduce(function (s, k) { return s + g[k]; }, 0) });
   }
 
-  var svg = $('dona-svg');
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-  var NS = 'http://www.w3.org/2000/svg', R = 54, C = 2 * Math.PI * R;
-  var circulo = function (color, dash, off) {
-    var c = document.createElementNS(NS, 'circle');
-    c.setAttribute('cx', 66); c.setAttribute('cy', 66); c.setAttribute('r', R);
-    c.setAttribute('fill', 'none'); c.setAttribute('stroke-width', 16);
-    c.style.stroke = color; // como estilo: var(--x) no vale en el atributo SVG
-    if (dash) {
-      c.setAttribute('stroke-dasharray', dash);
-      c.setAttribute('stroke-dashoffset', off);
-      c.setAttribute('transform', 'rotate(-90 66 66)');
-    }
-    svg.appendChild(c);
-  };
-  circulo('var(--suave)');
-  var acc = 0, hueco = partes.length > 1 ? 2 : 0;
+  partes.forEach(function (p, i) { p.color = 'var(--dona-' + (p.cat ? i + 1 : 6) + ')'; });
+  dibujarDona($('dona-svg'), partes, total, { c: 66, r: 54, grosor: 16 });
   var leyenda = $('dona-leyenda');
   leyenda.innerHTML = '';
-  partes.forEach(function (p, i) {
-    var color = 'var(--dona-' + (p.cat ? i + 1 : 6) + ')';
-    var len = C * p.valor / total;
-    circulo(color, Math.max(len - hueco, 0.01).toFixed(2) + ' ' + (C - len + hueco).toFixed(2), (-acc).toFixed(2));
-    acc += len;
+  partes.forEach(function (p) {
+    var color = p.color;
 
     // Fila de leyenda: tocarla lleva a los movimientos de esa categoría
     var b = document.createElement('button');
@@ -328,6 +310,35 @@ function renderDonde() {
       ? peor.cat + ' ya pasó su presupuesto del mes (' + Math.round(peor.frac * 100) + '%).'
       : peor.cat + ' va en ' + Math.round(peor.frac * 100) + '% de su presupuesto del mes.';
   }
+}
+
+/**
+ * Dibuja una dona en `svg` (viewBox de 2c×2c): un anillo de fondo y un arco
+ * por parte, en el orden dado. partes = [{ valor, color }].
+ */
+function dibujarDona(svg, partes, total, cfg) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  var NS = 'http://www.w3.org/2000/svg', C = 2 * Math.PI * cfg.r;
+  var circulo = function (color, dash, off) {
+    var el = document.createElementNS(NS, 'circle');
+    el.setAttribute('cx', cfg.c); el.setAttribute('cy', cfg.c); el.setAttribute('r', cfg.r);
+    el.setAttribute('fill', 'none'); el.setAttribute('stroke-width', cfg.grosor);
+    el.style.stroke = color; // como estilo: var(--x) no vale en el atributo SVG
+    if (dash) {
+      el.setAttribute('stroke-dasharray', dash);
+      el.setAttribute('stroke-dashoffset', off);
+      el.setAttribute('transform', 'rotate(-90 ' + cfg.c + ' ' + cfg.c + ')');
+    }
+    svg.appendChild(el);
+  };
+  circulo('var(--suave)');
+  if (!(total > 0)) return;
+  var acc = 0, hueco = partes.length > 1 ? 2 : 0;
+  partes.forEach(function (p) {
+    var len = C * p.valor / total;
+    circulo(p.color, Math.max(len - hueco, 0.01).toFixed(2) + ' ' + (C - len + hueco).toFixed(2), (-acc).toFixed(2));
+    acc += len;
+  });
 }
 
 /** Los 5 movimientos más recientes, con los mismos renglones del Historial. */

@@ -86,10 +86,11 @@ function chipCuenta(c, activa, onclick) {
 function chipCategoria(c, activa, onclick) {
   var b = document.createElement('button');
   b.type = 'button';
-  b.className = 'chip';
+  b.className = 'chip chip-cat';  // cuadrito: emoji arriba, nombre abajo
   b.title = c.categoria;
 
   var em = document.createElement('span');
+  em.className = 'cat-ico';
   em.textContent = c.icono || '🏷️';       // el emoji viene de la hoja
   var txt = document.createElement('span');
   txt.className = 'txt';
@@ -194,6 +195,14 @@ function renderCategorias() {
     ? todas.filter(function (c) { return normalizarTexto(c.categoria).indexOf(filtro) >= 0; })
     : todas;
 
+  // Dentro de cada grupo, las que más usas primero (en los movimientos
+  // cargados): la que buscas casi siempre queda en la primera fila.
+  var usos = {};
+  (datos.movimientos || []).forEach(function (m) {
+    if (m.categoria) usos[m.categoria] = (usos[m.categoria] || 0) + 1;
+  });
+  var porUso = function (a, b) { return (usos[b.categoria] || 0) - (usos[a.categoria] || 0); };
+
   // El grupo del tipo que se está registrando va primero
   var grupos = GRUPOS_CAT.slice().sort(function (a, b) {
     return (a.tipo === tipoSel ? 0 : 1) - (b.tipo === tipoSel ? 0 : 1);
@@ -202,7 +211,7 @@ function renderCategorias() {
   var pintadas = 0;
   var ultimaRejilla = null;
   grupos.forEach(function (g) {
-    var delGrupo = visibles.filter(function (c) { return esDelGrupo(c, g.tipo); });
+    var delGrupo = visibles.filter(function (c) { return esDelGrupo(c, g.tipo); }).sort(porUso);
     if (!delGrupo.length) return;
     pintadas += delGrupo.length;
 
@@ -212,7 +221,7 @@ function renderCategorias() {
     tit.className = 'chips-grupo-tit';
     tit.textContent = g.titulo;
     var rejilla = document.createElement('div');
-    rejilla.className = 'chips chips-grilla densa';
+    rejilla.className = 'chips rejilla-cats';
     delGrupo.forEach(function (c) {
       rejilla.appendChild(chipCategoria(c, c.categoria === catSel, function () {
         catSel = c.categoria;
@@ -239,15 +248,15 @@ function renderCategorias() {
   // chip costaba 60px de alto en una pantalla que ya iba justa.
   var mas = document.createElement('button');
   mas.type = 'button';
-  mas.className = 'chip chip-gestionar';
+  mas.className = 'chip chip-cat chip-gestionar';
   mas.title = 'Crear, editar u ocultar categorías';
-  mas.innerHTML = icono('ajustes', true) + '<span class="txt">Gestionar</span>';
+  mas.innerHTML = '<span class="cat-ico">' + icono('ajustes') + '</span><span class="txt">Gestionar</span>';
   mas.onclick = function () { irA('ajustes'); };
   if (ultimaRejilla) {
     ultimaRejilla.appendChild(mas);
   } else {
     var sola = document.createElement('div');
-    sola.className = 'chips chips-grilla densa';
+    sola.className = 'chips rejilla-cats';
     sola.appendChild(mas);
     cc.appendChild(sola);
   }

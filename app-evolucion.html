@@ -3,6 +3,146 @@
    Finanzas App — Vista Evolución: mes a mes, insights, composición y categorías en el tiempo.
    ===================================================================== */
 
+// ============================================================ PESTAÑAS
+// Análisis tiene dos pestañas: Categorías (el mes por categoría) y Evolución
+// (las gráficas en el tiempo). La elegida se recuerda en este navegador.
+var tabAnalisis = (function () {
+  try { return localStorage.getItem('tabAnalisis') === 'evol' ? 'evol' : 'cats'; } catch (e) { return 'cats'; }
+})();
+var mesAnalisis = null; // 'yyyy-MM' elegido en la pestaña Categorías; null = el actual
+
+function aplicarTabAnalisis() {
+  document.querySelectorAll('.seg-tab').forEach(function (b) {
+    var on = b.dataset.tab === tabAnalisis;
+    b.classList.toggle('activa', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  $('analisis-cats').hidden = tabAnalisis !== 'cats';
+  $('analisis-evol').hidden = tabAnalisis !== 'evol';
+}
+
+/**
+ * Pestaña Categorías: el gasto de UN mes por categoría (dona grande, total,
+ * comparación con el mes anterior y lista con la barra del presupuesto).
+ * Los meses salen de datos.resumen.meses (los últimos 12).
+ */
+function renderAnalisisCats() {
+  var meses = datos.resumen.meses;
+  var idx = meses.length - 1;
+  if (mesAnalisis) {
+    for (var k = 0; k < meses.length; k++) if (meses[k].mes === mesAnalisis) idx = k;
+  }
+  var m = meses[idx], prev = idx > 0 ? meses[idx - 1] : null;
+  var esActual = idx === meses.length - 1;
+  $('an-mes-txt').textContent = nombreMes(m.mes);
+  $('an-mes-ant').disabled = idx === 0;
+  $('an-mes-sig').disabled = esActual;
+
+  var g = m.gastosPorCategoria || {};
+  var gPrev = prev ? (prev.gastosPorCategoria || {}) : {};
+  var cats = Object.keys(g).filter(function (c) { return g[c] > 0; })
+    .sort(function (a, b) { return g[b] - g[a]; });
+  var total = cats.reduce(function (s, c) { return s + g[c]; }, 0);
+  $('an-vacio').hidden = total > 0;
+  $('an-lista').hidden = total <= 0;
+
+  // Dona: las 5 mayores con color propio y el resto juntas en gris
+  var partes = cats.slice(0, 5).map(function (c, i) { return { valor: g[c], color: 'var(--dona-' + (i + 1) + ')' }; });
+  if (cats.length > 5) {
+    partes.push({ valor: cats.slice(5).reduce(function (s, c) { return s + g[c]; }, 0), color: 'var(--dona-6)' });
+  }
+  dibujarDona($('an-dona'), partes, total, { c: 95, r: 72, grosor: 22 });
+  // En el centro va la cifra CORTA: el monto completo no cabe en el agujero
+  $('an-dona-corto').textContent = total > 0 ? etiquetaCortaBase(total) : '—';
+  $('an-total').textContent = fmtBase(total);
+
+  var delta = $('an-delta');
+  delta.hidden = !(prev && prev.gastos > 0);
+  if (!delta.hidden) {
+    var pct = Math.round((m.gastos - prev.gastos) / prev.gastos * 100);
+    var mesPrev = nombreMes(prev.mes).split(' ')[0];
+    delta.textContent = pct === 0 ? 'Igual que ' + mesPrev
+      : Math.abs(pct) + '% ' + (pct < 0 ? 'menos' : 'más') + ' que ' + mesPrev;
+    delta.className = 'chip-delta an-delta ' + (pct > 0 ? 'sube' : 'baja');
+  }
+
+  var dias = esActual ? Number(datos.hoy.substring(8, 10)) : diasDelMes(m.mes);
+  $('an-prom').textContent = fmtBase(total / Math.max(dias, 1));
+
+  var topes = {};
+  (datos.presupuestos || []).forEach(function (p) { topes[p.categoria] = p.tope; });
+  var sumTope = 0, sumUsado = 0;
+  Object.keys(topes).forEach(function (c) { sumTope += topes[c]; sumUsado += g[c] || 0; });
+  $('an-presup-box').hidden = sumTope <= 0;
+  $('an-presup').textContent = sumTope > 0 ? Math.round(sumUsado / sumTope * 100) + '%' : '—';
+
+  // Lista: cada categoría con su parte del total, cambio vs el mes anterior y,
+  // si tiene presupuesto, cuánto lleva de él. Tocarla abre sus movimientos.
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  var lista = $('an-lista');
+  lista.innerHTML = '';
+  cats.forEach(function (c, i) {
+    var fila = document.createElement('button');
+    fila.type = 'button';
+    fila.className = 'an-fila';
+    fila.onclick = function () { irACategoria(c, m.mes); };
+
+    var arriba = document.createElement('div');
+    arriba.className = 'an-fila-top';
+    var ico = document.createElement('span');
+    ico.className = 'an-ico';
+    ico.textContent = iconos[c] || '🏷️';
+    var info = document.createElement('div');
+    info.className = 'an-info';
+    var nom = document.createElement('div');
+    nom.className = 'an-nombre';
+    nom.textContent = c; // textContent: el nombre viene de la hoja
+    var sub = document.createElement('div');
+    sub.className = 'an-sub';
+    sub.textContent = Math.round(g[c] / total * 100) + '% del gasto';
+    info.appendChild(nom); info.appendChild(sub);
+    var der = document.createElement('div');
+    der.className = 'an-der';
+    var val = document.createElement('div');
+    val.className = 'an-valor';
+    val.textContent = fmtBase(g[c]);
+    var cmp = document.createElement('div');
+    cmp.className = 'an-cmp';
+    if (prev) {
+      var antes = gPrev[c] || 0;
+      if (antes <= 0) { cmp.textContent = 'nueva'; }
+      else {
+        var p = Math.round((g[c] - antes) / antes * 100);
+        cmp.textContent = p === 0 ? 'igual' : (p > 0 ? '+ ' : '− ') + Math.abs(p) + '%';
+        cmp.classList.add(p > 0 ? 'rojo' : (p < 0 ? 'verde' : 'x'));
+      }
+    }
+    der.appendChild(val); der.appendChild(cmp);
+    arriba.appendChild(ico); arriba.appendChild(info); arriba.appendChild(der);
+    fila.appendChild(arriba);
+
+    if (topes[c] > 0) {
+      var frac = g[c] / topes[c];
+      var barra = document.createElement('div');
+      barra.className = 'an-barra';
+      var pista = document.createElement('div');
+      pista.className = 'barra';
+      var rell = document.createElement('div');
+      rell.className = 'barra-relleno';
+      rell.style.width = Math.min(frac, 1) * 100 + '%';
+      rell.style.background = frac >= 0.9 ? 'var(--barra-sale)' : 'var(--dona-' + Math.min(i + 1, 6) + ')';
+      pista.appendChild(rell);
+      var txt = document.createElement('span');
+      txt.className = 'an-tope' + (frac >= 0.9 ? ' rojo' : '');
+      txt.textContent = Math.round(frac * 100) + '% de ' + fmtBase(topes[c]);
+      barra.appendChild(pista); barra.appendChild(txt);
+      fila.appendChild(barra);
+    }
+    lista.appendChild(fila);
+  });
+}
+
 // ============================================================ MESES
 /** Mes ('yyyy-MM') de la fecha de corte más antigua: antes de eso no hay saldos. */
 function corteMesGlobal() {
@@ -72,6 +212,11 @@ var chartComposicion = null, chartCatsTiempo = null;
  * todo lo de aquí.
  */
 function renderEvolucion() {
+  aplicarTabAnalisis();
+  renderAnalisisCats();
+  // Las gráficas solo se dibujan con su pestaña a la vista: un canvas oculto
+  // se dibuja mal (y no hace falta gastar en él).
+  if (tabAnalisis !== 'evol') return;
   // Estas partes son HTML puro (no dependen de Chart.js): siempre se pintan.
   renderTablaMeses();
   renderInsights();
@@ -395,6 +540,25 @@ function guardarAjusteMes() {
 
 /** Conecta Evolucion: el modal de un mes y los chips de vista de las graficas. */
 function conectarEvolucion() {
+  // Pestañas de Análisis y navegación de mes de la pestaña Categorías
+  document.querySelectorAll('.seg-tab').forEach(function (b) {
+    b.onclick = function () {
+      tabAnalisis = b.dataset.tab;
+      try { localStorage.setItem('tabAnalisis', tabAnalisis); } catch (e) { /* sin almacenamiento: solo esta sesión */ }
+      renderEvolucion();
+    };
+  });
+  var moverMes = function (paso) {
+    var meses = datos.resumen.meses;
+    var idx = meses.length - 1;
+    meses.forEach(function (m, k) { if (m.mes === mesAnalisis) idx = k; });
+    idx = Math.max(0, Math.min(meses.length - 1, idx + paso));
+    mesAnalisis = idx === meses.length - 1 ? null : meses[idx].mes;
+    renderAnalisisCats();
+  };
+  $('an-mes-ant').onclick = function () { moverMes(-1); };
+  $('an-mes-sig').onclick = function () { moverMes(1); };
+
   // Modal de mes (detalle + ajuste del inicio)
   $('mes-cerrar').onclick = cerrarMes;
   $('modal-mes').onclick = function (e) { if (e.target === this) cerrarMes(); };

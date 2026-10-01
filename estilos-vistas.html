@@ -25,11 +25,26 @@
   #bloque-categoria { order: 5; }
   #bloque-fecha { order: 6; }
   #reg-acciones { order: 7; }
+  #bloque-tanda { order: 8; margin-top: var(--e3); }
 
   /* "Guardar y agregar otro" y la lista de lo que se lleva en la tanda */
-  #btn-guardar-otro { width: 100%; margin-top: var(--e2); font-weight: 600; }
+  #btn-guardar-otro { width: 100%; font-weight: 700; }
   #btn-guardar-otro:disabled { opacity: .6; }
-  #bloque-tanda { margin-top: var(--e3); }
+  #btn-guardar-otro .txt-corto { display: none; }
+
+  /* Celular: Guardar y "Otro" lado a lado, FIJOS sobre la barra de abajo */
+  @media (max-width: 899px) {
+    #reg-acciones {
+      position: sticky; bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom)); z-index: 5;
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
+      margin: 0 calc(-1 * var(--pad-tarjeta)); padding: var(--e2b) var(--pad-tarjeta);
+      background: var(--fondo);
+    }
+    #reg-acciones #btn-guardar { order: 2; margin-top: 0; min-height: 54px; }
+    #reg-acciones #btn-guardar-otro { order: 1; min-height: 54px; border-radius: var(--radio); }
+    #btn-guardar-otro .txt-largo { display: none; }
+    #btn-guardar-otro .txt-corto { display: inline; }
+  }
   .tanda-fila {
     display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
     padding: var(--e2) 0; border-top: 1px solid var(--divisor); font-size: var(--t-cuerpo);
@@ -165,6 +180,62 @@
   #ultimos-movs .mov:last-child { border-bottom: none; }
   .grid-cuentas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pad-fila); margin-bottom: var(--e3); }
 
+  /* ========================================================= Vista: Análisis */
+  .seg-tabs {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e1);
+    padding: var(--e1); margin-bottom: var(--e3); border-radius: var(--radio); background: var(--borde);
+  }
+  .seg-tab {
+    min-height: var(--alto-chico); border: none; border-radius: var(--radio-chip); cursor: pointer;
+    background: transparent; color: var(--texto-suave); font: inherit; font-size: var(--t-lista); font-weight: 800;
+  }
+  .seg-tab.activa { background: var(--tarjeta); color: var(--texto); box-shadow: var(--sombra-1); }
+  html[data-tema="oscuro"] .seg-tabs { background: var(--suave); }
+  html[data-tema="oscuro"] .seg-tab.activa { background: var(--borde); }
+
+  .mes-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--e3); }
+  .mes-nav span { font-size: var(--t-boton); font-weight: 800; text-transform: capitalize; }
+  .mes-nav .btn-icono:disabled { opacity: .35; cursor: default; }
+
+  .an-resumen { display: flex; flex-direction: column; align-items: center; gap: var(--e2); text-align: center; }
+  .dona.dona-grande { width: 190px; height: 190px; }
+  .dona-grande .dona-centro span { font-size: var(--t-seccion); }
+  .dona-grande .dona-centro b { font-size: var(--t-monto-chico); letter-spacing: -0.02em; }
+  .an-total { font-size: var(--t-titulo); font-weight: 800; font-variant-numeric: tabular-nums; margin-top: var(--e1); }
+  .an-delta { font-size: var(--t-nota); }
+  .an-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e2); width: 100%; margin-top: var(--e2); }
+  .an-datos > div {
+    display: flex; flex-direction: column; gap: var(--e0); text-align: left;
+    padding: var(--e2b) var(--e3); border-radius: var(--radio-chip); background: var(--suave);
+  }
+  .an-datos b { font-size: var(--t-cifra-chica); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .an-datos > div:only-child { grid-column: 1 / -1; }
+
+  .an-lista { padding-top: var(--e1); padding-bottom: var(--e1); }
+  .an-fila {
+    display: flex; flex-direction: column; gap: var(--e2); width: 100%;
+    padding: var(--e3) 0; border: none; border-top: 1px solid var(--divisor);
+    background: none; cursor: pointer; text-align: left; font: inherit; color: var(--texto);
+  }
+  .an-fila:first-child { border-top: none; }
+  .an-fila-top { display: flex; align-items: center; gap: var(--e3); }
+  .an-ico {
+    width: 40px; height: 40px; flex: none; border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center; background: var(--suave); font-size: 20px;
+  }
+  .an-info { flex: 1; min-width: 0; }
+  .an-nombre { font-size: var(--t-cuerpo); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .an-sub { font-size: var(--t-caption); font-weight: 600; color: var(--texto-suave); }
+  .an-der { flex: none; text-align: right; }
+  .an-valor { font-size: var(--t-cuerpo); font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .an-cmp { font-size: var(--t-seccion); font-weight: 700; color: var(--texto-suave); white-space: nowrap; }
+  .an-barra { display: flex; align-items: center; gap: var(--e2b); }
+  .an-barra .barra { flex: 1; min-width: 0; height: 8px; }
+  .an-tope { flex: none; font-size: var(--t-seccion); font-weight: 700; color: var(--texto-suave); white-space: nowrap; }
+  .an-tope.rojo { color: var(--rojo); }
+  .an-cmp.rojo { color: var(--rojo); }
+  .an-cmp.verde { color: var(--verde); }
+
   /* =========================================== Vista: detalle de una cuenta */
   #cd-volver { margin-bottom: var(--pad-fila); }
   .cuenta-hero { border-top: var(--e1b) solid var(--color-cuenta, var(--primario)); }
@@ -232,6 +303,31 @@
   .aj-indice-item .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--e0); }
   .aj-indice-item .ai-txt b { font-size: var(--t-cuerpo); font-weight: 600; }
   .aj-indice-item .ic { color: var(--texto-suave); flex: none; }
+  /* Icono del grupo en un cuadrito de color, como las acciones del Inicio */
+  .aj-indice-item > .ic:first-child {
+    width: 36px; height: 36px; padding: var(--e2); border-radius: var(--radio-chip);
+    background: var(--acento-suave); color: var(--acento);
+  }
+  /* Tarjeta de arriba: dónde están tus datos */
+  .aj-perfil {
+    display: flex; align-items: center; gap: var(--e3); margin-bottom: var(--e2);
+    padding: var(--e3b); border-radius: var(--radio); background: var(--tarjeta);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+  }
+  .aj-perfil .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .aj-perfil .ai-txt b { font-size: var(--t-cuerpo); font-weight: 800; }
+  .aj-perfil a.btn-mini { text-decoration: none; color: var(--acento); font-weight: 700; }
+  #aj-cats-lista { margin-top: var(--e3); }
+  .aj-perfil-ico {
+    width: 42px; height: 42px; flex: none; border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--barra-entra) 16%, var(--tarjeta)); color: var(--verde);
+  }
+  /* Categorías en Ajustes: 3 por fila (hay menos ancho útil que en Registrar) */
+  #aj-cats-lista .rejilla-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #aj-cats-lista .chips-grupo + .chips-grupo { margin-top: var(--e3); }
+  .chip-cat.oculta { opacity: .55; border-style: dashed; }
+  .cat-oculta { font-size: var(--t-micro); font-weight: 700; color: var(--texto-suave); }
   .aj-indice-item:hover { border-color: var(--borde); }
   .aj-indice-item:active { transform: scale(.99); }
 
@@ -308,8 +404,9 @@
        En el DOM sigue yendo de último: así el tabulador llega a él al final. */
     #reg-volver   { grid-area: 1 / 1 / 2 / 3; justify-self: start; margin-bottom: var(--e2); }
     .col-form     { grid-area: 2 / 1 / 3 / 2; }
-    .col-elegir   { grid-area: 2 / 2 / 4 / 3; }
-    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); }
+    .col-elegir   { grid-area: 2 / 2 / 5 / 3; }
+    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); display: flex; flex-direction: column; gap: var(--e2); }
+    #bloque-tanda { grid-area: 4 / 1 / 5 / 2; align-self: start; }
 
     /* --- Panel --- */
     /* El patrimonio y "este mes" son las dos cifras que uno viene a mirar:

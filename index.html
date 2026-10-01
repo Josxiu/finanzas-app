@@ -24,6 +24,7 @@
        Un solo lugar para todos los iconos de UI; los emojis quedan SOLO como
        icono de categoría. Se usan con <svg class="ic"><use href="#i-nombre"/></svg>. -->
   <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
+    <symbol id="i-hoja" viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="2"/><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="9" x2="10" y2="21"/></symbol>
     <symbol id="i-inicio" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></symbol>
     <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/></symbol>
     <symbol id="i-evolucion" viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
@@ -161,17 +162,19 @@
 
       <!-- Fuera de las .col a propósito: así el tabulador llega a Guardar
            DESPUÉS de cuenta y categoría, y no a mitad del formulario. -->
+      <!-- En el celular queda FIJO abajo (sobre la barra): Guardar siempre a
+           mano aunque la lista de categorías sea larga. -->
       <div id="reg-acciones">
         <button id="btn-guardar" class="btn-principal" type="submit">Guardar gasto</button>
         <!-- Para meter varias compras seguidas: guarda y deja el formulario
              abierto con la misma cuenta, categoría y fecha. -->
-        <button id="btn-guardar-otro" class="btn-secundario" type="button" title="Guarda y deja el formulario abierto con la misma cuenta, categoría y fecha"><svg class="ic"><use href="#i-mas"/></svg>Guardar y agregar otro</button>
+        <button id="btn-guardar-otro" class="btn-secundario" type="button" title="Guardar y agregar otro: deja el formulario abierto con la misma cuenta, categoría y fecha" aria-label="Guardar y agregar otro"><svg class="ic"><use href="#i-mas"/></svg><span class="txt-largo">Guardar y agregar otro</span><span class="txt-corto">Otro</span></button>
+      </div>
 
-        <!-- Lo guardado en esta tanda (se vacía al salir de Registrar) -->
-        <div class="tarjeta" id="bloque-tanda" hidden>
-          <span class="etiqueta" id="tanda-titulo">Agregados ahora</span>
-          <div id="lista-tanda"></div>
-        </div>
+      <!-- Lo guardado en esta tanda (se vacía al salir de Registrar) -->
+      <div class="tarjeta" id="bloque-tanda" hidden>
+        <span class="etiqueta" id="tanda-titulo">Agregados ahora</span>
+        <div id="lista-tanda"></div>
       </div>
       </form>
     </section>
@@ -344,6 +347,37 @@
     <!-- ================= VISTA: EVOLUCIÓN ================= -->
     <section id="vista-meses" class="vista">
 
+      <!-- Dos pestañas: el detalle del mes por categoría (nuevo) y la evolución
+           en el tiempo (las gráficas de siempre). -->
+      <div class="seg-tabs" role="tablist" aria-label="Análisis">
+        <button type="button" role="tab" class="seg-tab" data-tab="cats" aria-selected="true">Categorías</button>
+        <button type="button" role="tab" class="seg-tab" data-tab="evol" aria-selected="false">Evolución</button>
+      </div>
+
+      <div id="analisis-cats">
+        <div class="mes-nav">
+          <button type="button" class="btn-icono" id="an-mes-ant" aria-label="Mes anterior"><svg class="ic"><use href="#i-flecha-izq"/></svg></button>
+          <span id="an-mes-txt">—</span>
+          <button type="button" class="btn-icono" id="an-mes-sig" aria-label="Mes siguiente"><svg class="ic"><use href="#i-flecha-der"/></svg></button>
+        </div>
+        <div class="tarjeta an-resumen">
+          <div class="dona dona-grande">
+            <svg id="an-dona" viewBox="0 0 190 190" aria-hidden="true"></svg>
+            <div class="dona-centro"><span>Gastado</span><b id="an-dona-corto">—</b></div>
+          </div>
+          <b class="an-total" id="an-total">—</b>
+          <span class="chip-delta an-delta" id="an-delta" hidden></span>
+          <div class="an-datos">
+            <div><span class="mini">Promedio diario</span><b id="an-prom">—</b></div>
+            <div id="an-presup-box"><span class="mini">Presupuesto usado</span><b id="an-presup">—</b></div>
+          </div>
+        </div>
+        <div class="tarjeta an-lista" id="an-lista"></div>
+        <p class="ayuda" id="an-vacio" hidden>No hay gastos en este mes.</p>
+      </div>
+
+      <div id="analisis-evol" hidden>
+
       <!-- Un SOLO selector de rango para toda la vista (el mismo `rangoSel` del
            Panel: una preferencia, no dos). Antes Evolución tenía el suyo propio
            solo para repetir la línea de patrimonio que ya está en el Panel. -->
@@ -407,6 +441,7 @@
       <!-- Detalle mes a mes (tocar abre el modal de ajuste de inicio) -->
       <div class="titulo-seccion"><span class="etiqueta">Detalle por mes</span></div>
       <div id="lista-meses"></div>
+      </div>
     </section>
 
     <!-- ================= VISTA: HISTORIAL =================
