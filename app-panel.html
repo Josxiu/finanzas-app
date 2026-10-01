@@ -189,10 +189,19 @@ function renderResumen() {
   var r = datos.resumen.mesActual;
   $('titulo-mes').textContent = 'Este mes (' + nombreMes(r.mes) + ')';
   $('txt-inicio-mes').textContent = fmtBase(datos.patrimonioInicioMes);
-  $('txt-ingresos').textContent = fmtBase(r.ingresos);
-  $('txt-gastos').textContent = fmtBase(r.gastos);
-  $('txt-neto').textContent = fmtBase(r.neto);
-  $('txt-neto').className = r.neto >= 0 ? 'verde' : 'rojo';
+  // Con signo: así lo que entra y lo que sale se distinguen también sin color
+  $('txt-ingresos').textContent = '+ ' + fmtBase(r.ingresos);
+  $('txt-gastos').textContent = '− ' + fmtBase(r.gastos);
+  $('txt-neto').textContent = (r.neto < 0 ? '− ' : '') + fmtBase(Math.abs(r.neto));
+  $('txt-neto').className = r.neto >= 0 ? '' : 'rojo';
+  $('txt-neto-label').textContent = r.neto >= 0 ? 'Te quedan' : 'Gastaste de más';
+  // Barras comparables: la más grande de las dos llena el ancho
+  var tope = Math.max(r.ingresos, r.gastos) || 1;
+  $('barra-ingresos').style.width = Math.round(r.ingresos / tope * 100) + '%';
+  $('barra-gastos').style.width = Math.round(r.gastos / tope * 100) + '%';
+  var diaMes = Number(datos.hoy.substring(8, 10));
+  var faltan = diasDelMes(r.mes) - diaMes;
+  $('txt-dias-faltan').textContent = faltan > 0 ? 'Faltan ' + faltan + (faltan === 1 ? ' día' : ' días') : 'Último día';
 
   // Comparación contra el mes pasado (estilo Whisper), solo en ingresos y
   // gastos: el neto se deduce de esos dos y su chip solo agregaba ruido.
@@ -237,7 +246,113 @@ function renderResumen() {
   }
 
   renderPresupuestos();
+  renderDonde();
+  renderUltimos();
   renderGraficas();
+}
+
+/**
+ * "¿En qué se fue?": dona del gasto del mes por categoría (las 5 mayores y el
+ * resto juntas), su leyenda y un aviso si algún presupuesto va por el 90%.
+ * SVG a mano (sin Chart.js): es pequeña y así no depende del CDN.
+ */
+function renderDonde() {
+  var g = gastoMesActualPorCategoria();
+  var cats = Object.keys(g).filter(function (k) { return g[k] > 0; })
+    .sort(function (a, b) { return g[b] - g[a]; });
+  var total = cats.reduce(function (s, k) { return s + g[k]; }, 0);
+  $('dona-fila').hidden = total <= 0;
+  $('dona-vacio').hidden = total > 0;
+
+  var partes = cats.slice(0, 5).map(function (k) { return { nombre: k, valor: g[k], cat: k }; });
+  if (cats.length > 5) {
+    partes.push({ nombre: 'Otras', cat: null, valor: cats.slice(5).reduce(function (s, k) { return s + g[k]; }, 0) });
+  }
+
+  partes.forEach(function (p, i) { p.color = 'var(--dona-' + (p.cat ? i + 1 : 6) + ')'; });
+  dibujarDona($('dona-svg'), partes, total, { c: 66, r: 54, grosor: 16 });
+  var leyenda = $('dona-leyenda');
+  leyenda.innerHTML = '';
+  partes.forEach(function (p) {
+    var color = p.color;
+
+    // Fila de leyenda: tocarla lleva a los movimientos de esa categoría
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'dona-item';
+    var punto = document.createElement('span');
+    punto.className = 'dona-punto';
+    punto.style.background = color;
+    var nom = document.createElement('span');
+    nom.className = 'dona-nombre';
+    nom.textContent = p.nombre; // textContent: el nombre viene de la hoja
+    var pct = document.createElement('span');
+    pct.className = 'dona-pct';
+    pct.textContent = Math.round(p.valor / total * 100) + '%';
+    b.title = p.nombre + ': ' + fmtBase(p.valor);
+    b.appendChild(punto); b.appendChild(nom); b.appendChild(pct);
+    if (p.cat) b.onclick = function () { irACategoria(p.cat, datos.hoy.substring(0, 7)); };
+    else b.onclick = function () { irA('meses'); };
+    leyenda.appendChild(b);
+  });
+  $('dona-total').textContent = total > 0 ? etiquetaCortaBase(total) : '—';
+
+  // Aviso: el presupuesto más apretado, si ya va por el 90% o más
+  var peor = null;
+  (datos.presupuestos || []).forEach(function (p) {
+    var frac = (g[p.categoria] || 0) / p.tope;
+    if (frac >= 0.9 && (!peor || frac > peor.frac)) peor = { cat: p.categoria, frac: frac };
+  });
+  var aviso = $('dona-aviso');
+  aviso.hidden = !peor;
+  if (peor) {
+    aviso.textContent = peor.frac > 1
+      ? peor.cat + ' ya pasó su presupuesto del mes (' + Math.round(peor.frac * 100) + '%).'
+      : peor.cat + ' va en ' + Math.round(peor.frac * 100) + '% de su presupuesto del mes.';
+  }
+}
+
+/**
+ * Dibuja una dona en `svg` (viewBox de 2c×2c): un anillo de fondo y un arco
+ * por parte, en el orden dado. partes = [{ valor, color }].
+ */
+function dibujarDona(svg, partes, total, cfg) {
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  var NS = 'http://www.w3.org/2000/svg', C = 2 * Math.PI * cfg.r;
+  var circulo = function (color, dash, off) {
+    var el = document.createElementNS(NS, 'circle');
+    el.setAttribute('cx', cfg.c); el.setAttribute('cy', cfg.c); el.setAttribute('r', cfg.r);
+    el.setAttribute('fill', 'none'); el.setAttribute('stroke-width', cfg.grosor);
+    el.style.stroke = color; // como estilo: var(--x) no vale en el atributo SVG
+    if (dash) {
+      el.setAttribute('stroke-dasharray', dash);
+      el.setAttribute('stroke-dashoffset', off);
+      el.setAttribute('transform', 'rotate(-90 ' + cfg.c + ' ' + cfg.c + ')');
+    }
+    svg.appendChild(el);
+  };
+  circulo('var(--suave)');
+  if (!(total > 0)) return;
+  var acc = 0, hueco = partes.length > 1 ? 2 : 0;
+  partes.forEach(function (p) {
+    var len = C * p.valor / total;
+    circulo(p.color, Math.max(len - hueco, 0.01).toFixed(2) + ' ' + (C - len + hueco).toFixed(2), (-acc).toFixed(2));
+    acc += len;
+  });
+}
+
+/** Los 5 movimientos más recientes, con los mismos renglones del Historial. */
+function renderUltimos() {
+  var cont = $('ultimos-movs');
+  cont.innerHTML = '';
+  var lista = (datos.movimientos || []).slice(0, 5);
+  if (!lista.length) {
+    cont.innerHTML = '<p class="ayuda">Todavía no hay movimientos. Toca + para registrar el primero.</p>';
+    return;
+  }
+  var iconos = {};
+  datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
+  pintarMovimientos(cont, lista, iconos);
 }
 
 function alternarOrden() {
@@ -551,7 +666,7 @@ function renderGraficaCategorias() {
   chartDona = new Chart($('chart-dona'), {
     type: 'doughnut',
     data: {
-      labels: etiquetas.map(function (e) { return (iconos[e] || '') + ' ' + e; }),
+      labels: etiquetas, // sin emoji: las gráficas no pintan los iconos SVG
       datasets: [{
         data: etiquetas.map(function (e) { return g[e]; }),
         // Índice módulo N: con más categorías que colores se reciclan en orden
@@ -594,7 +709,9 @@ function renderListaCats(etiquetas, g, total, iconos) {
     var info = document.createElement('div');
     info.className = 'fila-cat-info';
     var nombre = document.createElement('span');
-    nombre.textContent = (iconos[cat] || '🏷️') + ' ' + cat; // textContent: viene de la hoja
+    nombre.className = 'con-icono';
+    nombre.appendChild(spanIconoCat(cat));
+    nombre.appendChild(document.createTextNode(cat)); // de la hoja: nodo de texto
     var monto = document.createElement('span');
     monto.className = 'monto';
     var pct = total > 0 ? Math.round(g[cat] / total * 100) : 0;
@@ -721,6 +838,13 @@ function renderGraficaBarras() {
 function conectarPanel() {
   $('btn-ordenar').onclick = alternarOrden;
 
+  // Registrar rápido: abre Registrar con el tipo ya elegido
+  document.querySelectorAll('.accion-rapida').forEach(function (b) {
+    b.onclick = function () { elegirTipo(b.dataset.tipo); abrirRegistrar(); };
+  });
+  $('btn-ver-analisis').onclick = function () { irA('meses'); };
+  $('btn-ver-movs').onclick = function () { irA('historial'); };
+
   // Presupuestos: desplegar/plegar el resto, y "Editar" lleva a la categoria,
   // que es donde vive el tope desde v11.
   $('presup-vertodos').onclick = function () {
@@ -734,7 +858,7 @@ function conectarPanel() {
   document.querySelectorAll('[data-rango]').forEach(function (b) {
     b.onclick = function () {
       rangoSel = Number(b.dataset.rango);
-      localStorage.setItem('rangoGraficas', rangoSel);
+      guardarPref('rangoGraficas', rangoSel);
       renderGraficas();
       renderEvolucion();
     };

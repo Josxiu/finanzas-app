@@ -25,11 +25,26 @@
   #bloque-categoria { order: 5; }
   #bloque-fecha { order: 6; }
   #reg-acciones { order: 7; }
+  #bloque-tanda { order: 8; margin-top: var(--e3); }
 
   /* "Guardar y agregar otro" y la lista de lo que se lleva en la tanda */
-  #btn-guardar-otro { width: 100%; margin-top: var(--e2); font-weight: 600; }
+  #btn-guardar-otro { width: 100%; font-weight: 700; }
   #btn-guardar-otro:disabled { opacity: .6; }
-  #bloque-tanda { margin-top: var(--e3); }
+  #btn-guardar-otro .txt-corto { display: none; }
+
+  /* Celular: Guardar y "Otro" lado a lado, FIJOS sobre la barra de abajo */
+  @media (max-width: 899px) {
+    #reg-acciones {
+      position: sticky; bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom)); z-index: 5;
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
+      margin: 0 calc(-1 * var(--pad-tarjeta)); padding: var(--e2b) var(--pad-tarjeta);
+      background: var(--fondo);
+    }
+    #reg-acciones #btn-guardar { order: 2; margin-top: 0; min-height: 54px; }
+    #reg-acciones #btn-guardar-otro { order: 1; min-height: 54px; border-radius: var(--radio); }
+    #btn-guardar-otro .txt-largo { display: none; }
+    #btn-guardar-otro .txt-corto { display: inline; }
+  }
   .tanda-fila {
     display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
     padding: var(--e2) 0; border-top: 1px solid var(--divisor); font-size: var(--t-cuerpo);
@@ -66,20 +81,160 @@
   }
   /* En Registrar el CTA es Guardar: el FAB estorba, se esconde (solo móvil) */
   @media (max-width: 899px) {
-    body.en-registrar .nav-registrar { display: none; }
+    body.en-registrar .nav-registrar { visibility: hidden; } /* conserva su casilla */
   }
 
   /* ========================================================== Vista: Panel */
   /* Cabecera: apilada en móvil, dos columnas en PC (ver el bloque de escritorio) */
+  /* En móvil: patrimonio, botones rápidos y "Este mes", en ese orden (en el
+     DOM los rápidos van al final para que en PC ocupen una fila entera abajo). */
+  .panel-hero { display: flex; flex-direction: column; }
+  .panel-hero > .patrimonio { order: 1; }
+  .panel-hero > .acciones-rapidas { order: 2; }
+  .panel-hero > .tarjeta-mes { order: 3; }
   .panel-hero > .tarjeta { margin-bottom: var(--e3); }
-  .patrimonio { background: var(--primario); color: var(--sobre-color); border-color: transparent; }
-  .patrimonio .etiqueta { color: var(--sobre-primario); }
-  .patrimonio .cod-moneda { color: var(--sobre-primario); }
-  .patrimonio-desglose {
-    font-size: var(--t-nota); color: var(--sobre-primario);
-    margin-top: var(--e1); font-variant-numeric: tabular-nums;
+  .patrimonio {
+    background: var(--hero); color: var(--hero-texto); border-color: transparent;
+    border-radius: calc(var(--radio) + 4px); padding: var(--e4b) var(--e4b) var(--e4);
   }
+  .patrimonio .etiqueta { color: var(--hero-suave); text-transform: none; letter-spacing: 0; font-size: var(--t-nota); }
+  .patrimonio .valor-grande { font-weight: 800; letter-spacing: -0.02em; font-size: 36px; }
+  .patrimonio .cod-moneda { color: var(--hero-suave); }
+  .patrimonio-desglose {
+    font-size: var(--t-nota); color: var(--hero-suave);
+    margin-top: var(--e2); padding-top: var(--e2b); border-top: 1px solid var(--hero-linea);
+    font-variant-numeric: tabular-nums;
+  }
+  .patrimonio-desglose + .patrimonio-desglose { border-top: none; padding-top: 0; margin-top: var(--e1); }
+
+  /* Botones rápidos: abren Registrar con el tipo ya elegido */
+  .acciones-rapidas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--e2); margin-bottom: var(--e3); }
+  .accion-rapida {
+    display: flex; flex-direction: column; align-items: center; gap: var(--e2);
+    padding: var(--e3) var(--e1); border: none; border-radius: var(--radio);
+    background: var(--tarjeta); box-shadow: var(--sombra-1); cursor: pointer;
+    font: inherit; font-size: var(--t-caption); font-weight: 700; color: var(--texto);
+  }
+  .accion-rapida:active { transform: scale(.97); }
+  .ar-icono {
+    width: var(--alto-toque-min); height: var(--alto-toque-min); border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center;
+  }
+  .ar-icono .ic { width: 22px; height: 22px; }
+  .ar-icono.gasto { background: color-mix(in srgb, var(--barra-sale) 16%, var(--tarjeta)); color: var(--rojo); }
+  .ar-icono.ingreso { background: color-mix(in srgb, var(--barra-entra) 16%, var(--tarjeta)); color: var(--verde); }
+  .ar-icono.transfer { background: var(--acento-suave); color: var(--acento); }
+  .ar-icono.pago { background: color-mix(in srgb, var(--dona-5) 18%, var(--tarjeta)); color: var(--dona-5); }
+
+  /* Este mes: barras de lo que entró y salió, y lo que queda */
+  .tarjeta-mes { display: flex; flex-direction: column; gap: var(--e3); }
+  .tarjeta-mes .etiqueta-fila { margin-bottom: 0; }
+  .flujo { display: flex; flex-direction: column; gap: var(--e1b); }
+  .flujo-fila { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--t-lista); }
+  .flujo-fila > span:first-child { font-weight: 600; color: var(--texto-suave); flex: 1; }
+  .flujo-fila b { font-size: var(--t-cifra-chica); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .barra { height: 10px; border-radius: var(--radio-pildora); background: var(--suave); overflow: hidden; }
+  .barra-relleno { height: 100%; width: 0; border-radius: var(--radio-pildora); transition: width .4s ease; }
+  .barra-relleno.entra { background: var(--barra-entra); }
+  .barra-relleno.sale { background: var(--barra-sale); }
+  .te-quedan {
+    display: flex; align-items: center; justify-content: space-between; gap: var(--e2);
+    padding: var(--e3) var(--e3b); border-radius: var(--radio-chip); background: var(--suave);
+  }
+  .te-quedan span { font-size: var(--t-lista); font-weight: 600; color: var(--texto-suave); }
+  .te-quedan b { font-size: var(--t-titulo); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .tarjeta-mes .empezo b { color: var(--texto); font-variant-numeric: tabular-nums; }
+
+  /* ¿En qué se fue? La cifra del centro va CORTA ("1,28M"): el agujero de la
+     dona mide ~100px y un monto completo no cabe sin salirse. */
+  .dona-fila { display: flex; align-items: center; gap: var(--e4); }
+  .dona { position: relative; width: 132px; height: 132px; flex: none; }
+  .dona svg { width: 100%; height: 100%; display: block; }
+  .dona-centro {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+  }
+  .dona-centro span { font-size: var(--t-micro); font-weight: 700; color: var(--texto-suave); }
+  .dona-centro b { font-size: var(--t-cifra); font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .dona-leyenda { flex: 1; min-width: 0; max-width: 340px; display: flex; flex-direction: column; gap: var(--e2); }
+  .dona-item {
+    display: flex; align-items: center; gap: var(--e2); width: 100%;
+    border: none; background: none; padding: 0; cursor: pointer; text-align: left;
+    font: inherit; font-size: var(--t-nota); color: var(--texto);
+  }
+  .dona-punto { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+  .dona-nombre { flex: 1; min-width: 0; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dona-pct { font-weight: 800; flex: none; font-variant-numeric: tabular-nums; }
+  .aviso-presup {
+    display: flex; align-items: center; gap: var(--e2b); margin-top: var(--e3);
+    padding: var(--e3) var(--e3b); border-radius: var(--radio-chip);
+    background: var(--aviso-fondo); color: var(--ambar-texto);
+    font-size: var(--t-dato); font-weight: 600;
+  }
+  #ultimos-movs .dia-titulo:first-child { margin-top: 0; }
+  /* Dentro de la tarjeta los renglones van planos (sin tarjeta dentro de tarjeta) */
+  #ultimos-movs .mov {
+    background: none; border: none; box-shadow: none; border-radius: 0;
+    padding: var(--e2) 0; margin: 0; border-bottom: 1px solid var(--divisor);
+  }
+  #ultimos-movs .mov:last-child { border-bottom: none; }
   .grid-cuentas { display: grid; grid-template-columns: 1fr 1fr; gap: var(--pad-fila); margin-bottom: var(--e3); }
+
+  /* ========================================================= Vista: Análisis */
+  .seg-tabs {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e1);
+    padding: var(--e1); margin-bottom: var(--e3); border-radius: var(--radio); background: var(--borde);
+  }
+  .seg-tab {
+    min-height: var(--alto-chico); border: none; border-radius: var(--radio-chip); cursor: pointer;
+    background: transparent; color: var(--texto-suave); font: inherit; font-size: var(--t-lista); font-weight: 800;
+  }
+  .seg-tab.activa { background: var(--tarjeta); color: var(--texto); box-shadow: var(--sombra-1); }
+  html[data-tema="oscuro"] .seg-tabs { background: var(--suave); }
+  html[data-tema="oscuro"] .seg-tab.activa { background: var(--borde); }
+
+  .mes-nav { display: flex; align-items: center; justify-content: space-between; margin-bottom: var(--e3); }
+  .mes-nav span { font-size: var(--t-boton); font-weight: 800; text-transform: capitalize; }
+  .mes-nav .btn-icono:disabled { opacity: .35; cursor: default; }
+
+  .an-resumen { display: flex; flex-direction: column; align-items: center; gap: var(--e2); text-align: center; }
+  .dona.dona-grande { width: 190px; height: 190px; }
+  .dona-grande .dona-centro span { font-size: var(--t-seccion); }
+  .dona-grande .dona-centro b { font-size: var(--t-monto-chico); letter-spacing: -0.02em; }
+  .an-total { font-size: var(--t-titulo); font-weight: 800; font-variant-numeric: tabular-nums; margin-top: var(--e1); }
+  .an-delta { font-size: var(--t-nota); }
+  .an-datos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--e2); width: 100%; margin-top: var(--e2); }
+  .an-datos > div {
+    display: flex; flex-direction: column; gap: var(--e0); text-align: left;
+    padding: var(--e2b) var(--e3); border-radius: var(--radio-chip); background: var(--suave);
+  }
+  .an-datos b { font-size: var(--t-cifra-chica); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .an-datos > div:only-child { grid-column: 1 / -1; }
+
+  .an-lista { padding-top: var(--e1); padding-bottom: var(--e1); }
+  .an-fila {
+    display: flex; flex-direction: column; gap: var(--e2); width: 100%;
+    padding: var(--e3) 0; border: none; border-top: 1px solid var(--divisor);
+    background: none; cursor: pointer; text-align: left; font: inherit; color: var(--texto);
+  }
+  .an-fila:first-child { border-top: none; }
+  .an-fila-top { display: flex; align-items: center; gap: var(--e3); }
+  .an-ico {
+    width: 40px; height: 40px; flex: none; border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center; background: var(--suave); font-size: 20px;
+  }
+  .an-info { flex: 1; min-width: 0; }
+  .an-nombre { font-size: var(--t-cuerpo); font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .an-sub { font-size: var(--t-caption); font-weight: 600; color: var(--texto-suave); }
+  .an-der { flex: none; text-align: right; }
+  .an-valor { font-size: var(--t-cuerpo); font-weight: 800; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .an-cmp { font-size: var(--t-seccion); font-weight: 700; color: var(--texto-suave); white-space: nowrap; }
+  .an-barra { display: flex; align-items: center; gap: var(--e2b); }
+  .an-barra .barra { flex: 1; min-width: 0; height: 8px; }
+  .an-tope { flex: none; font-size: var(--t-seccion); font-weight: 700; color: var(--texto-suave); white-space: nowrap; }
+  .an-tope.rojo { color: var(--rojo); }
+  .an-cmp.rojo { color: var(--rojo); }
+  .an-cmp.verde { color: var(--verde); }
 
   /* =========================================== Vista: detalle de una cuenta */
   #cd-volver { margin-bottom: var(--pad-fila); }
@@ -148,6 +303,31 @@
   .aj-indice-item .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--e0); }
   .aj-indice-item .ai-txt b { font-size: var(--t-cuerpo); font-weight: 600; }
   .aj-indice-item .ic { color: var(--texto-suave); flex: none; }
+  /* Icono del grupo en un cuadrito de color, como las acciones del Inicio */
+  .aj-indice-item > .ic:first-child {
+    width: 36px; height: 36px; padding: var(--e2); border-radius: var(--radio-chip);
+    background: var(--acento-suave); color: var(--acento);
+  }
+  /* Tarjeta de arriba: dónde están tus datos */
+  .aj-perfil {
+    display: flex; align-items: center; gap: var(--e3); margin-bottom: var(--e2);
+    padding: var(--e3b); border-radius: var(--radio); background: var(--tarjeta);
+    border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+  }
+  .aj-perfil .ai-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .aj-perfil .ai-txt b { font-size: var(--t-cuerpo); font-weight: 800; }
+  .aj-perfil a.btn-mini { text-decoration: none; color: var(--acento); font-weight: 700; }
+  #aj-cats-lista { margin-top: var(--e3); }
+  .aj-perfil-ico {
+    width: 42px; height: 42px; flex: none; border-radius: var(--radio-chip);
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--barra-entra) 16%, var(--tarjeta)); color: var(--verde);
+  }
+  /* Categorías en Ajustes: 3 por fila (hay menos ancho útil que en Registrar) */
+  #aj-cats-lista .rejilla-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #aj-cats-lista .chips-grupo + .chips-grupo { margin-top: var(--e3); }
+  .chip-cat.oculta { opacity: .55; border-style: dashed; }
+  .cat-oculta { font-size: var(--t-micro); font-weight: 700; color: var(--texto-suave); }
   .aj-indice-item:hover { border-color: var(--borde); }
   .aj-indice-item:active { transform: scale(.99); }
 
@@ -167,7 +347,7 @@
     /* --- Menú lateral --- */
     .nav-inferior {
       top: 0; bottom: 0; right: auto; width: var(--ancho-nav);
-      flex-direction: column; justify-content: flex-start; gap: var(--e1);
+      display: flex; flex-direction: column; justify-content: flex-start; gap: var(--e1);
       padding: var(--pad-modal) var(--e3); border-top: none; border-right: 1px solid var(--borde-tarjeta);
       box-shadow: none;
     }
@@ -177,8 +357,9 @@
       padding: var(--e2) var(--e3) var(--e4b);
     }
     /* El FAB deja de flotar: pasa a ser el botón primario del sidebar, arriba */
+    .nav-inferior > * { order: 0; }
     .nav-registrar {
-      position: static; width: 100%; height: auto; border-radius: var(--radio-chip);
+      position: static; width: 100%; height: auto; border-radius: var(--radio-chip); margin-top: 0;
       min-height: var(--alto-toque); margin-bottom: var(--e4); padding: 0 var(--e3);
       justify-content: flex-start; gap: var(--e3); box-shadow: none;
     }
@@ -223,8 +404,9 @@
        En el DOM sigue yendo de último: así el tabulador llega a él al final. */
     #reg-volver   { grid-area: 1 / 1 / 2 / 3; justify-self: start; margin-bottom: var(--e2); }
     .col-form     { grid-area: 2 / 1 / 3 / 2; }
-    .col-elegir   { grid-area: 2 / 2 / 4 / 3; }
-    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); }
+    .col-elegir   { grid-area: 2 / 2 / 5 / 3; }
+    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); display: flex; flex-direction: column; gap: var(--e2); }
+    #bloque-tanda { grid-area: 4 / 1 / 5 / 2; align-self: start; }
 
     /* --- Panel --- */
     /* El patrimonio y "este mes" son las dos cifras que uno viene a mirar:
@@ -235,6 +417,7 @@
       align-items: stretch;
     }
     .panel-hero > .tarjeta { margin-bottom: var(--e3); min-width: 0; }
+    .panel-hero > .acciones-rapidas { grid-column: 1 / -1; order: 3; }
     /* Dentro del hero la tarjeta es media pantalla, así que los 4 datos van 2x2:
        en una sola fila, cifras como "$ 1.218.295,49" se parten en dos líneas. */
     .panel-hero .resumen-mes { grid-template-columns: repeat(2, 1fr); }
@@ -303,5 +486,105 @@
     .modal-fondo { align-items: center; }
     .modal { border-radius: var(--radio); max-width: var(--ancho-modal-pc); padding: var(--e5); }
     @keyframes subirModal { from { transform: translateY(var(--e3)) scale(.98); opacity: .6; } }
+  }
+
+  /* ======================================================= Iconos de categoría
+     Al final a propósito: gana a los fondos/colores de cada contenedor
+     (.cat-ico, .an-ico, .mov .icono, .ai-emoji). El color del trazo sale del
+     tono; el fondo es ese tono muy diluido sobre la tarjeta. */
+  .ic-cat { display: inline-flex; align-items: center; justify-content: center; }
+  .mov .ic-cat .ic, .ic-cat .ic { color: inherit; stroke-width: 1.9; }
+  .ic-cat.tono-1 { color: var(--tono-1); background: color-mix(in srgb, var(--tono-1) 15%, var(--tarjeta)); }
+  .ic-cat.tono-2 { color: var(--tono-2); background: color-mix(in srgb, var(--tono-2) 15%, var(--tarjeta)); }
+  .ic-cat.tono-3 { color: var(--tono-3); background: color-mix(in srgb, var(--tono-3) 15%, var(--tarjeta)); }
+  .ic-cat.tono-4 { color: var(--tono-4); background: color-mix(in srgb, var(--tono-4) 15%, var(--tarjeta)); }
+  .ic-cat.tono-5 { color: var(--tono-5); background: color-mix(in srgb, var(--tono-5) 15%, var(--tarjeta)); }
+  .ic-cat.tono-6 { color: var(--tono-6); background: color-mix(in srgb, var(--tono-6) 15%, var(--tarjeta)); }
+  .ic-cat.tono-7 { color: var(--tono-7); background: color-mix(in srgb, var(--tono-7) 15%, var(--tarjeta)); }
+  .ic-cat.tono-8 { color: var(--tono-8); background: color-mix(in srgb, var(--tono-8) 15%, var(--tarjeta)); }
+  /* Icono pequeño delante de un nombre (presupuestos, lista de categorías) */
+  .con-icono { display: inline-flex; align-items: center; gap: var(--e2); min-width: 0; }
+  .con-icono > .ic-cat { width: 26px; height: 26px; border-radius: 8px; flex: none; }
+  .con-icono > .ic-cat .ic { width: 15px; height: 15px; }
+  /* En el selector del editor: el elegido lleva el borde de acento */
+  .emoji-grid button.ic-cat { border: 2px solid transparent; }
+  .emoji-grid button.ic-cat .ic { width: 22px; height: 22px; }
+  .emoji-grid button.ic-cat.activa { border-color: var(--primario); }
+  .mov .icono.ic-cat .ic { width: 20px; height: 20px; }
+  .mov .icono.ic-cat { border-radius: var(--radio-chip); }
+  /* Palabra larga ("Rendimientos"): un punto menos para que quepa entera */
+  /* Encabezado de día con su neto a la derecha */
+  .dia-titulo { display: flex; justify-content: space-between; gap: var(--e2); }
+  .dia-total { font-variant-numeric: tabular-nums; }
+  /* Hoy / Ayer junto a la fecha de Registrar */
+  #bloque-fecha .etiqueta-fila { margin-bottom: var(--e1); }
+  .fecha-rapida { display: inline-flex; gap: var(--e1); }
+  .chip-fecha {
+    min-height: 32px; padding: 0 var(--e3); border-radius: var(--radio-pildora); cursor: pointer;
+    border: 1px solid var(--borde); background: var(--tarjeta); color: var(--texto-suave);
+    font: inherit; font-size: var(--t-seccion); font-weight: 700;
+  }
+  .chip-fecha.activa { background: var(--acento-suave); border-color: var(--acento-suave); color: var(--acento); }
+  .chip-cat .txt.nombre-largo { font-size: 10.5px; letter-spacing: -0.02em; }
+
+  /* ============================================ Cuentas deslizables (celular)
+     En el Inicio, cuentas y deudas van en una tira que se desliza de lado:
+     se ven ~2 tarjetas y media, lo que deja claro que hay más. */
+  @media (max-width: 899px) {
+    #lista-cuentas, #lista-deudas {
+      display: flex; gap: var(--pad-fila); overflow-x: auto; scroll-snap-type: x proximity;
+      scroll-padding-inline: var(--pad-tarjeta); /* el ajuste respeta el margen, no pega al borde */
+      margin: 0 calc(-1 * var(--pad-tarjeta)) var(--e3); padding: var(--e0) var(--pad-tarjeta) var(--e1b);
+      scrollbar-width: none; -webkit-overflow-scrolling: touch;
+    }
+    #lista-cuentas::-webkit-scrollbar, #lista-deudas::-webkit-scrollbar { display: none; }
+    #lista-cuentas > *, #lista-deudas > * {
+      flex: none; width: 42%; min-width: 150px; max-width: 200px; scroll-snap-align: start;
+    }
+    #lista-cuentas > .agregar, #lista-deudas > .agregar { width: 34%; min-width: 120px; }
+  }
+
+  /* ================================= Registro rápido al lado del Inicio (PC ancho) */
+  .reg-lateral-tit { display: none; }
+  @media (min-width: 1200px) {
+    body.registro-lateral .contenedor {
+      max-width: 1320px; display: grid; grid-template-columns: minmax(0, 1fr) 360px;
+      column-gap: var(--e5); align-items: start;
+    }
+    body.registro-lateral .contenedor > header { grid-column: 1 / -1; }
+    body.registro-lateral #vista-resumen { grid-column: 1; min-width: 0; }
+    body.registro-lateral #vista-registrar {
+      display: flex !important; flex-direction: column; grid-column: 2; grid-row: 2 / span 30;
+      position: sticky; top: var(--e4); max-height: calc(100vh - 104px); overflow-y: auto; /* 104 = encabezado + aire: el pie con Guardar siempre a la vista */
+      padding: var(--e4); border-radius: calc(var(--radio) + 4px);
+      background: var(--tarjeta); border: 1px solid var(--borde-tarjeta); box-shadow: var(--sombra-1);
+    }
+    /* Una sola columna, en el orden del celular */
+    body.registro-lateral #vista-registrar .col { display: contents; }
+    body.registro-lateral #reg-volver { display: none; }
+    body.registro-lateral .reg-lateral-tit {
+      display: block; order: -1; font-size: var(--t-subtitulo); font-weight: 800; margin-bottom: var(--e3);
+    }
+    /* Dentro del panel los bloques no van como tarjetas sueltas */
+    body.registro-lateral #vista-registrar .tarjeta {
+      box-shadow: none; border: none; padding: 0; margin-bottom: var(--e4); background: none;
+    }
+    body.registro-lateral #vista-registrar .grupo-tipos { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    body.registro-lateral #vista-registrar .btn-tipo { min-height: 56px; font-size: 11px; }
+    body.registro-lateral #vista-registrar .rejilla-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    body.registro-lateral #vista-registrar .fila-doble { grid-template-columns: 1fr; }
+    /* Guardar y "Otro" fijos al pie del panel (como en el celular) */
+    body.registro-lateral #reg-acciones {
+      position: sticky; bottom: calc(-1 * var(--e4)); z-index: 2; margin: 0 calc(-1 * var(--e4));
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
+      padding: var(--e3) var(--e4) var(--e4); background: var(--tarjeta); border-top: 1px solid var(--divisor);
+    }
+    body.registro-lateral #reg-acciones #btn-guardar { order: 2; margin-top: 0; }
+    body.registro-lateral #reg-acciones #btn-guardar-otro { order: 1; }
+    body.registro-lateral #btn-guardar-otro .txt-largo { display: none; }
+    body.registro-lateral #btn-guardar-otro .txt-corto { display: inline; }
+    /* Con el panel, el Inicio tiene menos ancho: el patrimonio en una línea */
+    body.registro-lateral .patrimonio .valor-grande { font-size: 30px; white-space: nowrap; }
+    body.registro-lateral #bloque-tanda { background: var(--suave); padding: var(--e3); border-radius: var(--radio-chip); }
   }
 </style>

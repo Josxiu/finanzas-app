@@ -66,6 +66,16 @@ Ojo: el permiso que se autoriza es "ver y editar tus hojas de cálculo", porque 
 app corre con la cuenta de cada persona. Quien controla el código podría, en
 teoría, cambiarlo para leer otras hojas: compártela solo con gente de confianza.
 
+## Iconos de categoría
+
+Las categorías usan iconos de línea (catálogo `ICONOS_CAT` en `app-core.html`,
+dibujos `c-*` en el sprite de `index.html`). En la hoja, la columna Icono de
+Categorias guarda `i:clave` (por ejemplo `i:comida`) cuando se elige uno desde
+la app. Las categorías viejas con emoji no hay que tocarlas: el emoji, o si no
+el nombre, se traduce al icono equivalente al pintar; un emoji que no tiene
+equivalente se sigue mostrando tal cual. Para agregar un icono nuevo: su
+`<symbol id="c-clave">` en el sprite y una fila en `ICONOS_CAT`.
+
 ## Opción B — Sin clasp (pegar a mano)
 
 1. Abre la hoja → **Extensiones > Apps Script**.

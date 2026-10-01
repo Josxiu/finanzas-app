@@ -30,15 +30,15 @@ var chartDona = null, chartBarras = null;
    sesiones. Es UNO SOLO para toda la app: manda sobre la línea de patrimonio del
    Panel y sobre las gráficas de Evolución. Hasta v10 había un `rangoEvol` aparte
    porque la línea de patrimonio estaba duplicada en las dos vistas. */
-var rangoSel = Number(localStorage.getItem('rangoGraficas')) || 6;
+var rangoSel = Number(leerPref('rangoGraficas')) || 6;
 if ([1, 3, 6, 12].indexOf(rangoSel) < 0) rangoSel = 6;
 
 // Vistas de las gráficas del Panel (estilo Whisper Money); también se recuerdan
-var vistaBarras = localStorage.getItem('vistaBarras') || 'ivg';  // 'ivg' | 'neto'
+var vistaBarras = leerPref('vistaBarras') || 'ivg';  // 'ivg' | 'neto'
 if (['ivg', 'neto'].indexOf(vistaBarras) < 0) vistaBarras = 'ivg'; // migra el viejo 'pct'
-var granBarras = localStorage.getItem('granBarras') || 'mes';    // 'mes' | 'dia'
+var granBarras = leerPref('granBarras') || 'mes';    // 'mes' | 'dia'
 if (['mes', 'dia'].indexOf(granBarras) < 0) granBarras = 'mes';
-var vistaCats = localStorage.getItem('vistaCats') || 'dona';     // 'dona' | 'lista'
+var vistaCats = leerPref('vistaCats') || 'dona';     // 'dona' | 'lista'
 if (['dona', 'lista'].indexOf(vistaCats) < 0) vistaCats = 'dona';
 
 // Paleta para gráficas y cuentas nuevas (incluye los colores de las 5 actuales)
@@ -420,7 +420,29 @@ function nuevoUid() {
 /** Guarda el último getDatos para pintarlo al instante en la próxima apertura. */
 function guardarCacheDatos(d) {
   try { localStorage.setItem(CLAVE_CACHE, JSON.stringify({ cuando: Date.now(), datos: d })); }
-  catch (e) { /* no cabe: seguimos sin caché, la app funciona igual */ }
+  catch (e) {
+    // No cabe: se BORRA la copia vieja (no solo se deja de actualizar). Si se
+    // quedaba, llenaba el almacenamiento y hacía fallar el guardado de las
+    // preferencias (el tema no cambiaba). La app funciona igual sin caché.
+    try { localStorage.removeItem(CLAVE_CACHE); } catch (e2) { /* nada que hacer */ }
+  }
+}
+
+/**
+ * Preferencias del navegador (tema, última cuenta, vistas de gráficas…).
+ * Nunca lanzan: localStorage puede estar bloqueado o LLENO (la copia de los
+ * datos ocupa casi todo). Si no cabe, la preferencia gana: se suelta la copia
+ * de los datos, que se vuelve a crear sola en la próxima carga.
+ */
+function leerPref(clave) {
+  try { return localStorage.getItem(clave); } catch (e) { return null; }
+}
+function guardarPref(clave, valor) {
+  try { localStorage.setItem(clave, valor); return; } catch (e) { /* lleno o bloqueado */ }
+  try {
+    localStorage.removeItem(CLAVE_CACHE);
+    guardarPref(clave, valor);
+  } catch (e) { /* bloqueado: la preferencia dura solo esta sesión */ }
 }
 function leerCacheDatos() {
   try { return JSON.parse(localStorage.getItem(CLAVE_CACHE)); } catch (e) { return null; }
@@ -621,5 +643,163 @@ function conectarCore() {
     if (!hayRed()) return toast('Sigue sin haber conexion', 'error');
     procesarCola();
   };
+}
+
+// ============================================================ ICONOS DE CATEGORÍA
+/**
+ * Iconos de línea para las categorías (v12). En la hoja, la columna Icono
+ * guarda 'i:clave' (p. ej. 'i:comida') cuando se elige uno de estos. Las
+ * categorías viejas con emoji no hay que tocarlas: el emoji (o, si no hay,
+ * el nombre) se traduce al icono equivalente al pintar. Un emoji que no se
+ * reconoce se sigue mostrando tal cual.
+ * Cada icono trae un tono (1-8) que da el color de su cuadrito.
+ */
+var ICONOS_CAT = [
+  ['comida', 'Comida', 2],
+  ['restaurante', 'Restaurante', 2],
+  ['cafe', 'Café', 2],
+  ['mercado', 'Mercado', 1],
+  ['fruta', 'Fruta', 1],
+  ['fiesta', 'Fiesta', 5],
+  ['bus', 'Bus', 4],
+  ['carro', 'Carro', 4],
+  ['moto', 'Moto', 4],
+  ['bici', 'Bicicleta', 7],
+  ['gasolina', 'Gasolina', 3],
+  ['viajes', 'Viajes', 7],
+  ['hogar', 'Hogar', 5],
+  ['arriendo', 'Arriendo', 5],
+  ['servicios', 'Servicios', 3],
+  ['agua', 'Agua', 4],
+  ['gas', 'Gas', 2],
+  ['internet', 'Internet', 4],
+  ['celular', 'Celular', 4],
+  ['tecnologia', 'Tecnología', 4],
+  ['herramientas', 'Arreglos', 8],
+  ['salud', 'Salud', 6],
+  ['farmacia', 'Farmacia', 6],
+  ['gym', 'Gimnasio', 6],
+  ['deporte', 'Deporte', 1],
+  ['belleza', 'Belleza', 6],
+  ['ropa', 'Ropa', 6],
+  ['mascotas', 'Mascotas', 2],
+  ['familia', 'Familia', 7],
+  ['personal', 'Personal', 6],
+  ['educacion', 'Educación', 7],
+  ['libros', 'Libros', 7],
+  ['ocio', 'Salidas', 5],
+  ['cine', 'Cine', 5],
+  ['musica', 'Música', 5],
+  ['juegos', 'Juegos', 5],
+  ['apuestas', 'Apuestas', 6],
+  ['suscripciones', 'Suscripciones', 5],
+  ['compras', 'Compras', 6],
+  ['regalo', 'Regalos', 6],
+  ['trabajo', 'Trabajo', 1],
+  ['salario', 'Salario', 1],
+  ['ingresos', 'Ingresos extra', 1],
+  ['rendimientos', 'Rendimientos', 1],
+  ['ahorro', 'Ahorro', 1],
+  ['inversion', 'Inversión', 7],
+  ['transferencia', 'Entre cuentas', 8],
+  ['deudas', 'Deudas', 5],
+  ['impuestos', 'Impuestos', 8],
+  ['seguros', 'Seguros', 7],
+  ['ajuste', 'Ajuste', 8],
+  ['otros', 'Otros', 8]
+];
+var ICONO_CAT = {};
+ICONOS_CAT.forEach(function (x) { ICONO_CAT[x[0]] = { clave: x[0], nombre: x[1], tono: x[2] }; });
+
+// Emojis que ya estaban en la hoja → icono equivalente
+var EMOJI_A_ICONO = {
+  '🍔': 'comida', '🍕': 'comida', '🍽': 'restaurante', '🍴': 'restaurante', '☕': 'cafe',
+  '🛒': 'mercado', '🍎': 'fruta', '🥑': 'fruta', '🍺': 'fiesta', '🍻': 'fiesta', '🎉': 'fiesta',
+  '🚌': 'bus', '🚍': 'bus', '🚇': 'bus', '🚕': 'carro', '🚗': 'carro', '🏍': 'moto', '🚲': 'bici',
+  '⛽': 'gasolina', '✈': 'viajes', '🏖': 'viajes',
+  '🏠': 'hogar', '🏡': 'hogar', '🔑': 'arriendo', '💡': 'servicios', '🔌': 'servicios', '💧': 'agua',
+  '🔥': 'gas', '🌐': 'internet', '📶': 'internet', '📱': 'celular', '💻': 'tecnologia', '🛠': 'herramientas',
+  '🏥': 'salud', '🩺': 'salud', '💊': 'farmacia', '🧴': 'belleza', '💇': 'belleza', '💪': 'gym',
+  '🏋': 'gym', '⚽': 'deporte', '👕': 'ropa', '👟': 'ropa', '👗': 'ropa', '🐶': 'mascotas', '🐱': 'mascotas',
+  '🐾': 'mascotas', '👨‍👩‍👧': 'familia', '👨‍👩‍👧‍👦': 'familia', '👪': 'familia',
+  '🎓': 'educacion', '📚': 'libros', '🎬': 'cine', '🎟': 'ocio', '🎨': 'ocio', '🎵': 'musica',
+  '🎮': 'juegos', '🎲': 'apuestas', '📺': 'suscripciones', '🛍': 'compras', '🎁': 'regalo',
+  '💼': 'trabajo', '💰': 'ingresos', '💵': 'ingresos', '🪙': 'ingresos', '📈': 'rendimientos',
+  '🐷': 'ahorro', '🏦': 'inversion', '🔁': 'transferencia', '🔄': 'transferencia', '💳': 'deudas',
+  '🧾': 'impuestos', '☂': 'seguros', '⚖': 'ajuste', '🌱': 'ahorro',
+  // Más emojis comunes (cualquier otro cae en el icono genérico de Otros)
+  '📦': 'otros', '🗃': 'otros', '🏷': 'otros', '❓': 'otros', '🍿': 'cine', '🎫': 'ocio', '🎤': 'musica',
+  '🎧': 'musica', '📖': 'libros', '✏': 'educacion', '🏫': 'educacion', '🍷': 'fiesta', '🥂': 'fiesta',
+  '🎂': 'regalo', '🍰': 'comida', '🌮': 'comida', '🥗': 'comida', '🍜': 'comida', '🍗': 'comida',
+  '🥤': 'cafe', '🧃': 'cafe', '🏪': 'mercado', '🧺': 'mercado', '🥖': 'mercado', '🚖': 'carro', '🚙': 'carro',
+  '🛵': 'moto', '🛫': 'viajes', '🧳': 'viajes', '🏨': 'viajes', '🧹': 'hogar', '🛋': 'hogar', '🚿': 'agua',
+  '📡': 'internet', '🖥': 'tecnologia', '📷': 'tecnologia', '🔧': 'herramientas', '🔨': 'herramientas',
+  '🦷': 'salud', '👓': 'salud', '💄': 'belleza', '💅': 'belleza', '🧸': 'regalo', '👶': 'familia',
+  '❤': 'familia', '🙏': 'familia', '💸': 'deudas', '🏧': 'ingresos', '💲': 'ingresos', '💹': 'inversion',
+  '📊': 'inversion', '🪴': 'hogar', '🐕': 'mascotas', '🐈': 'mascotas', '🏀': 'deporte',
+  '🚴': 'bici', '🏃': 'deporte', '📲': 'celular', '☎': 'celular', '🎰': 'apuestas', '🃏': 'apuestas'
+};
+// Sin emoji conocido: se intenta por el NOMBRE de la categoría
+var PALABRA_A_ICONO = [
+  ['entre cuentas', 'transferencia'], ['arriendo', 'arriendo'], ['renta', 'arriendo'],
+  ['mercado', 'mercado'], ['supermercado', 'mercado'], ['restaurante', 'restaurante'], ['almuerzo', 'comida'],
+  ['comida', 'comida'], ['domicilio', 'comida'], ['cafe', 'cafe'], ['transporte', 'bus'], ['bus', 'bus'],
+  ['taxi', 'carro'], ['uber', 'carro'], ['carro', 'carro'], ['parqueadero', 'carro'], ['gasolina', 'gasolina'],
+  ['moto', 'moto'], ['bici', 'bici'], ['viaje', 'viajes'], ['vuelo', 'viajes'], ['vacacion', 'viajes'],
+  ['hogar', 'hogar'], ['casa', 'hogar'], ['servicio', 'servicios'], ['luz', 'servicios'], ['energia', 'servicios'],
+  ['agua', 'agua'], ['gas', 'gas'], ['internet', 'internet'], ['celular', 'celular'], ['telefono', 'celular'],
+  ['tecnolog', 'tecnologia'], ['arreglo', 'herramientas'], ['salud', 'salud'], ['medic', 'salud'],
+  ['farmacia', 'farmacia'], ['drogueria', 'farmacia'], ['gym', 'gym'], ['gimnasio', 'gym'],
+  ['deporte', 'deporte'], ['futbol', 'deporte'], ['belleza', 'belleza'], ['peluqueria', 'belleza'],
+  ['ropa', 'ropa'], ['mascota', 'mascotas'], ['perro', 'mascotas'], ['gato', 'mascotas'], ['familia', 'familia'],
+  ['universidad', 'educacion'], ['colegio', 'educacion'], ['estudio', 'educacion'], ['curso', 'educacion'],
+  ['educacion', 'educacion'], ['libro', 'libros'], ['salida', 'ocio'], ['ocio', 'ocio'], ['entreten', 'ocio'],
+  ['cine', 'cine'], ['musica', 'musica'], ['juego', 'juegos'], ['apuesta', 'apuestas'], ['fiesta', 'fiesta'],
+  ['rumba', 'fiesta'], ['suscrip', 'suscripciones'], ['netflix', 'suscripciones'], ['spotify', 'suscripciones'],
+  ['compra', 'compras'], ['regalo', 'regalo'], ['trabajo', 'trabajo'], ['salario', 'salario'], ['sueldo', 'salario'],
+  ['nomina', 'salario'], ['rendimiento', 'rendimientos'], ['interes', 'rendimientos'], ['ahorro', 'ahorro'],
+  ['inversion', 'inversion'], ['transfer', 'transferencia'], ['deuda', 'deudas'], ['tarjeta', 'deudas'],
+  ['prestamo', 'deudas'], ['impuesto', 'impuestos'], ['seguro', 'seguros'], ['ajuste', 'ajuste'],
+  ['ingreso', 'ingresos'], ['extra', 'ingresos'], ['otro', 'otros'], ['vario', 'otros']
+];
+
+/** Clave del icono de una categoría ({categoria, icono}), o null si es un emoji propio. */
+function claveIconoCat(c) {
+  var ic = String((c && c.icono) || '').trim();
+  if (ic.indexOf('i:') === 0) return ICONO_CAT[ic.slice(2)] ? ic.slice(2) : 'otros';
+  var em = ic.replace(/\uFE0F/g, ''); // sin el selector de variante (❤️ = ❤)
+  if (em && em !== '🏷' && EMOJI_A_ICONO[em]) return EMOJI_A_ICONO[em];
+  var n = normalizarTexto((c && c.categoria) || '');
+  for (var i = 0; i < PALABRA_A_ICONO.length; i++) {
+    if (n.indexOf(PALABRA_A_ICONO[i][0]) >= 0) return PALABRA_A_ICONO[i][1];
+  }
+  // Un emoji sin equivalente ya no se muestra: todo va con iconos de línea, y
+  // el genérico de Otros es mejor que un emoji suelto entre los demás.
+  return 'otros';
+}
+
+/** Pinta en el elemento `el` el icono de la categoría `c`, en su cuadrito de color. */
+function pintarIconoCat(el, c) {
+  var k = claveIconoCat(c);
+  el.classList.add('ic-cat');
+  if (k) {
+    el.classList.add('tono-' + ICONO_CAT[k].tono);
+    el.innerHTML = '<svg class="ic"><use href="#c-' + k + '"/></svg>';
+  } else {
+    el.textContent = c.icono; // emoji propio (textContent: viene de la hoja)
+  }
+  return el;
+}
+
+/** Clase para el nombre de un cuadrito: letra más chica si trae una palabra larga. */
+function claseNombreCat(nombre) {
+  var larga = String(nombre).split(/\s+/).some(function (w) { return w.length > 10; });
+  return larga ? 'txt nombre-largo' : 'txt';
+}
+
+/** Un <span> con el icono de la categoría de ese nombre (busca su icono en datos). */
+function spanIconoCat(nombre) {
+  var c = (datos.categorias || []).filter(function (x) { return x.categoria === nombre; })[0] || { categoria: nombre };
+  return pintarIconoCat(document.createElement('span'), c);
 }
 </script>

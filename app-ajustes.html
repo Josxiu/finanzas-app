@@ -51,7 +51,9 @@ function renderPresupuestos() {
     var info = document.createElement('div');
     info.className = 'fila-cat-info';
     var nombre = document.createElement('span');
-    nombre.textContent = (iconos[p.categoria] || '🏷️') + ' ' + p.categoria;
+    nombre.className = 'con-icono';
+    nombre.appendChild(spanIconoCat(p.categoria));
+    nombre.appendChild(document.createTextNode(p.categoria)); // de la hoja: nodo de texto
     var monto = document.createElement('span');
     monto.className = 'monto';
     monto.textContent = fmtBase(gastado) + ' / ' + fmtBase(p.tope) + ' · ' + Math.round(frac * 100) + '%';
@@ -102,7 +104,7 @@ function renderAjustesTopes() {
     var it = document.createElement('button');
     it.type = 'button'; it.className = 'aj-item';
     var em = document.createElement('span');
-    em.className = 'ai-emoji'; em.textContent = iconos[p.categoria] || '🏷️';
+    em.className = 'ai-emoji'; pintarIconoCat(em, { categoria: p.categoria, icono: iconos[p.categoria] });
     var txt = document.createElement('span');
     txt.className = 'ai-txt';
     var nom = document.createElement('b'); nom.textContent = p.categoria;
@@ -123,30 +125,41 @@ function renderAjustesTopes() {
 }
 
 // ============================================================ CATEGORÍAS
-/** Grilla curada de emojis para el picker (categorías = único lugar de emojis). */
-var EMOJIS_CAT = ['🍔','🛒','☕','🍺','🍎','🥑','🎬','🎮','🎵','📚','🎓','💼','🏠','💡','💧','🔥',
-  '🚌','🚗','⛽','✈️','🏥','💊','💪','⚽','👕','👟','🎁','💇','🐶','🐱','🌱','🧴','📱','💻','🔌',
-  '💰','📈','🏦','💳','🎲','🧾','🍕','🛠️','🎨','🌐','☂️','🏷️','⚖️'];
 var catEditNombre = null;   // nombre de la categoría en edición (null = nueva)
-var catEditEmoji = '🏷️';   // emoji elegido en el picker
+var catEditEmoji = 'i:otros'; // icono elegido: 'i:clave' (o el emoji propio que ya tenía)
+var catEmojiPropio = null;    // emoji que la categoría traía y no está en el catálogo
 
+/**
+ * Selector de icono del editor: todo el catálogo ICONOS_CAT en cuadritos de
+ * color. Si la categoría traía un emoji que no tiene equivalente, aparece
+ * primero para poder conservarlo.
+ */
 function renderEmojiPicker() {
   var cont = $('cat-emoji-grid');
   cont.innerHTML = '';
-  EMOJIS_CAT.forEach(function (e) {
+  var opciones = ICONOS_CAT.map(function (x) { return { valor: 'i:' + x[0], nombre: x[1] }; });
+  if (catEmojiPropio) opciones.unshift({ valor: catEmojiPropio, nombre: 'Emoji actual' });
+  opciones.forEach(function (o) {
     var b = document.createElement('button');
     b.type = 'button';
-    b.textContent = e;
-    b.className = (e === catEditEmoji) ? 'activa' : '';
-    b.onclick = function () { catEditEmoji = e; renderEmojiPicker(); };
+    b.title = o.nombre;
+    b.setAttribute('aria-label', o.nombre);
+    pintarIconoCat(b, { icono: o.valor });
+    marcarActivo(b, o.valor === catEditEmoji);
+    b.onclick = function () { catEditEmoji = o.valor; renderEmojiPicker(); };
     cont.appendChild(b);
   });
+  var elegido = opciones.filter(function (o) { return o.valor === catEditEmoji; })[0];
+  $('cat-icono-nombre').textContent = elegido ? elegido.nombre : '';
 }
 
 /** Abre el editor de una categoría (o de una nueva si `c` es null). */
 function abrirCatEditor(c) {
   catEditNombre = c ? c.categoria : null;
-  catEditEmoji = c ? (c.icono || '🏷️') : '🏷️';
+  // El icono que se VE hoy (aunque en la hoja haya un emoji viejo) queda elegido
+  var clave = c ? claveIconoCat(c) : 'otros';
+  catEmojiPropio = (c && !clave) ? c.icono : null;
+  catEditEmoji = clave ? 'i:' + clave : c.icono;
   $('cat-titulo').textContent = c ? 'Editar categoría' : 'Nueva categoría';
   $('cat-nombre').value = c ? c.categoria : '';
   $('cat-tipo').value = c ? (c.tipoSugerido || '') : '';
@@ -250,7 +263,7 @@ function aplicarTema(modo) {
   var ef = temaEfectivo(modo);
   document.documentElement.setAttribute('data-tema', ef);
   var meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.content = ef === 'oscuro' ? '#171B21' : '#1A73E8';
+  if (meta) meta.content = ef === 'oscuro' ? '#0B0F14' : '#F2F4F7';
   if (typeof Chart !== 'undefined') {
     // Sin esto, los textos de Chart.js quedan ilegibles al cambiar de tema
     Chart.defaults.color = ef === 'oscuro' ? '#BDC1C6' : '#5F6368';
@@ -270,16 +283,16 @@ function aplicarTema(modo) {
   }
 }
 function elegirTema(modo) {
-  localStorage.setItem('tema', modo);
-  aplicarTema(modo);
+  aplicarTema(modo);        // primero se VE el cambio…
+  guardarPref('tema', modo); // …y luego se recuerda (si se puede)
 }
 
 // ============================================================ AJUSTES
-var VERSION = '11.0';
-var CHANGELOG = 'Orden. Al registrar ya se ven todas las cuentas y categorías de una, ' +
-  'sin arrastrar de lado. Ajustes pasó de una lista larguísima a secciones. El Panel ' +
-  'muestra lo de hoy y Evolución lo del tiempo, sin repetirse. Y el Historial filtra ' +
-  'con una barra que no se come media pantalla.';
+var VERSION = '12.0';
+var CHANGELOG = 'Diseño nuevo. Inicio con botones rápidos, el mes en barras y "¿En qué se fue?". ' +
+  'El + en el centro de la barra. Categorías con iconos de línea, en cuadritos fáciles de tocar. ' +
+  'Análisis por categoría mes a mes. "Guardar y agregar otro" para meter varias compras seguidas. ' +
+  'Y cada persona puede usar la app con su propia cuenta de Google y su propia hoja.';
 // Aviso honesto sobre el límite: la app vive dentro de Google Apps Script, que
 // no permite Service Workers, así que ABRIRLA siempre necesita internet.
 var NOTA_OFFLINE = 'Para abrir la app necesitas internet (es una app de Google). ' +
@@ -300,7 +313,7 @@ var MONEDAS_UI = ['COP', 'USD', 'EUR', 'GBP', 'BRL', 'MXN', 'ARS', 'CLP', 'PEN',
 
 var GRUPOS_AJUSTES = [
   { id: 'cuentas',     icono: 'tarjeta-cred', titulo: 'Cuentas y deudas',   sub: 'Agregar, editar, cuadrar y ordenar' },
-  { id: 'categorias',  icono: 'lista',        titulo: 'Categorías',         sub: 'Nombres, emojis y topes mensuales' },
+  { id: 'categorias',  icono: 'lista',        titulo: 'Categorías',         sub: 'Nombres, iconos y topes mensuales' },
   { id: 'monedas',     icono: 'grafica',      titulo: 'Monedas y tasas',    sub: 'En qué moneda lees todo y a qué cambio' },
   { id: 'recurrentes', icono: 'calendario',   titulo: 'Cada mes',           sub: 'Lo que se registra solo (arriendo, gym…)' },
   { id: 'apariencia',  icono: 'luna',         titulo: 'Apariencia',         sub: 'Claro, oscuro o automático' },
@@ -342,6 +355,23 @@ function renderAjustes() {
 function renderAjustesIndice() {
   var cont = $('aj-indice');
   cont.innerHTML = '';
+
+  // Arriba: dónde están TUS datos (cada persona tiene su propia hoja)
+  var perfil = document.createElement('div');
+  perfil.className = 'aj-perfil';
+  perfil.innerHTML = '<span class="aj-perfil-ico">' + icono('hoja') + '</span>' +
+    '<span class="ai-txt"><span class="mini">Tus datos están en</span><b>Tu hoja de Google</b></span>';
+  if (datos && datos.hojaUrl) {
+    var abrir = document.createElement('a');
+    abrir.className = 'btn-mini';
+    abrir.href = datos.hojaUrl;
+    abrir.target = '_blank';
+    abrir.rel = 'noopener';
+    abrir.textContent = 'Abrir';
+    perfil.appendChild(abrir);
+  }
+  cont.appendChild(perfil);
+
   GRUPOS_AJUSTES.forEach(function (g) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -395,7 +425,7 @@ function cerrarGrupoAjustes() {
 
 /** Chips de tema, con su aria-pressed. */
 function renderAjustesTema() {
-  var actual = localStorage.getItem('tema') || 'auto';
+  var actual = leerPref('tema') || 'auto';
   document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
     marcarActivo(b, b.dataset.tema === actual);
   });
@@ -515,7 +545,9 @@ function renderAjustesRecurrentes() {
     it.className = 'aj-item' + (r.activo ? '' : ' oculta');
     var em = document.createElement('span');
     em.className = 'ai-emoji';
-    em.textContent = iconos[r.categoria] || (r.tipo === 'Ingreso' ? '💰' : '🏷️');
+    pintarIconoCat(em, r.categoria
+      ? { categoria: r.categoria, icono: iconos[r.categoria] }
+      : { icono: r.tipo === 'Ingreso' ? 'i:ingresos' : (r.tipo === 'Gasto' ? 'i:otros' : 'i:transferencia') });
     var txt = document.createElement('span');
     txt.className = 'ai-txt';
     var nom = document.createElement('b');
@@ -545,7 +577,7 @@ function abrirRecurEditor(r) {
 
   llenarSelect($('recur-cuenta'), datos.cuentas.map(function (c) { return c.cuenta; }), '— elige —');
   llenarSelect($('recur-cat'), datos.categorias.map(function (c) { return c.categoria; }), '— sin categoría —');
-  $('recur-cuenta').value = r ? r.cuenta : (localStorage.getItem('ultimaCuenta') || '');
+  $('recur-cuenta').value = r ? r.cuenta : (leerPref('ultimaCuenta') || '');
   $('recur-cat').value = r ? r.categoria : '';
   pintarRecurTipo();
   $('modal-recur').hidden = false;
@@ -602,35 +634,51 @@ function renderAjustesCats() {
   var cont = $('aj-cats-lista');
   cont.innerHTML = '';
   var ocultas = datos.catsOcultas || [];
-  datos.categorias.forEach(function (c) {
-    var esOculta = ocultas.indexOf(c.categoria) >= 0;
-    var it = document.createElement('button');
-    it.type = 'button'; it.className = 'aj-item' + (esOculta ? ' oculta' : '');
-    var em = document.createElement('span');
-    em.className = 'ai-emoji'; em.textContent = c.icono || '🏷️';
-    var txt = document.createElement('span');
-    txt.className = 'ai-txt';
-    var nom = document.createElement('b'); nom.textContent = c.categoria;
-    var sub = document.createElement('span');
-    sub.className = 'ai-saldo';
-    sub.textContent = (c.tipoSugerido ? c.tipoSugerido : 'sin tipo') + (esOculta ? ' · oculta' : '');
-    txt.appendChild(nom); txt.appendChild(sub);
-    var chev = document.createElement('span');
-    chev.innerHTML = icono('lapiz');
-    it.appendChild(em); it.appendChild(txt); it.appendChild(chev);
-    it.onclick = function () { abrirCatEditor(c); };
-    cont.appendChild(it);
+  // Cuadritos agrupados por tipo (los mismos de Registrar): se ven todas de un
+  // vistazo; las ocultas van atenuadas. Tocar una abre su editor.
+  GRUPOS_CAT.forEach(function (g) {
+    var delGrupo = datos.categorias.filter(function (c) { return esDelGrupo(c, g.tipo); });
+    if (!delGrupo.length) return;
+    var caja = document.createElement('div');
+    caja.className = 'chips-grupo';
+    var tit = document.createElement('span');
+    tit.className = 'chips-grupo-tit';
+    tit.textContent = g.titulo;
+    var rejilla = document.createElement('div');
+    rejilla.className = 'chips rejilla-cats';
+    delGrupo.forEach(function (c) {
+      var esOculta = ocultas.indexOf(c.categoria) >= 0;
+      var it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'chip chip-cat' + (esOculta ? ' oculta' : '');
+      it.title = 'Editar ' + c.categoria + (esOculta ? ' (oculta)' : '');
+      var em = document.createElement('span');
+      em.className = 'cat-ico'; pintarIconoCat(em, c);
+      var nom = document.createElement('span');
+      nom.className = claseNombreCat(c.categoria); nom.textContent = c.categoria; // de la hoja: textContent
+      it.appendChild(em); it.appendChild(nom);
+      if (esOculta) {
+        var marca = document.createElement('span');
+        marca.className = 'cat-oculta'; marca.textContent = 'Oculta';
+        it.appendChild(marca);
+      }
+      it.onclick = function () { abrirCatEditor(c); };
+      rejilla.appendChild(it);
+    });
+    caja.appendChild(tit);
+    caja.appendChild(rejilla);
+    cont.appendChild(caja);
   });
 }
 
 /** Conecta Ajustes: tema, altas, editores de categoria y de recurrentes. */
 function conectarAjustes() {
   // Tema: lo guardado, o 'auto' (sigue al sistema)
-  aplicarTema(localStorage.getItem('tema') || 'auto');
+  aplicarTema(leerPref('tema') || 'auto');
   // En modo 'auto', re-aplicar cuando el sistema cambie de claro/oscuro
   if (window.matchMedia) {
     matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function () {
-      if ((localStorage.getItem('tema') || 'auto') === 'auto') aplicarTema('auto');
+      if ((leerPref('tema') || 'auto') === 'auto') aplicarTema('auto');
     });
   }
   document.querySelectorAll('#aj-tema .chip').forEach(function (b) {
