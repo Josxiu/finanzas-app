@@ -255,6 +255,16 @@
     font-size: 16px; cursor: pointer;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px;
   }
+  .btn-otro { width: 100%; margin-top: var(--e2); min-height: 52px; font-weight: 600; }
+  .btn-otro .ic { width: 18px; height: 18px; }
+  .btn-otro:disabled { opacity: .6; }
+  .tanda-fila {
+    display: flex; justify-content: space-between; gap: var(--e3);
+    padding: 8px 0; border-top: 1px solid var(--borde); font-size: 14.5px;
+  }
+  .tanda-fila:first-child { border-top: none; }
+  .tanda-fila .mini { display: block; }
+  .tanda-total { font-weight: 700; }
   .btn-peligro {
     min-height: 48px; padding: 0 14px; border: none; border-radius: var(--radio-chip);
     background: var(--peligro-fondo); color: var(--rojo); font-size: var(--t-cuerpo);
