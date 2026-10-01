@@ -137,6 +137,20 @@ function renderChipsRegistrar() {
         renderChipsRegistrar();
       }));
     });
+    // Hoja nueva (otro usuario el primer día): sin cuentas no hay dónde
+    // registrar, así que se ofrece crear la primera aquí mismo.
+    if (!origenes.length) {
+      var aviso = document.createElement('p');
+      aviso.className = 'ayuda';
+      aviso.textContent = 'Aún no tienes cuentas. Crea la primera (por ejemplo, tu banco o el efectivo).';
+      var crear = document.createElement('button');
+      crear.type = 'button'; // dentro del <form>: sin esto guardaría
+      crear.className = 'btn-mini';
+      crear.innerHTML = icono('mas', true) + 'Crear cuenta';
+      crear.onclick = function () { abrirModalCuenta('Activo'); };
+      cont.appendChild(aviso);
+      cont.appendChild(crear);
+    }
   }
 
   renderCategorias();

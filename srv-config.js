@@ -102,7 +102,7 @@ function leerTasas_(ss) {
  * Si no es COP, exige que exista una tasa para poder convertir.
  */
 function guardarMonedaBase(codigo) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -125,7 +125,7 @@ function guardarMonedaBase(codigo) {
 
 /** Actualiza la tasa MANUAL de una moneda (columna C de su fila en Config). */
 function guardarTasaManual(par, valor) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -151,7 +151,7 @@ function guardarTasaManual(par, valor) {
 
 /** Guarda la lista de categorías ocultas (no se ofrecen al registrar). */
 function guardarCatsOcultas(lista) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();

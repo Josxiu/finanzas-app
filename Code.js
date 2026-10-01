@@ -16,8 +16,11 @@
  *   srv-cuentas.js      alta, edición, borrado y orden de cuentas
  *   srv-categorias.js   categorías y presupuestos
  *   srv-config.js       hoja Config: moneda base, tasas y categorías ocultas
+ *   srv-libro.js        qué hoja abre cada usuario (y crearla la primera vez)
  */
 
+// Hoja del DUEÑO (quien despliega). Vinculado a la hoja no hace falta: la
+// encuentra getActiveSpreadsheet(). Los demás usuarios tienen la suya propia.
 var SPREADSHEET_ID = 'TU_ID_DE_HOJA_AQUI';
 
 var TZ = 'America/Bogota';
@@ -41,11 +44,7 @@ var CONFIG_MONEDAS = [
   { par: 'CHF', manual: 4900 }, { par: 'JPY', manual: 28 }
 ];
 
-/** Abre el libro: funciona vinculado a la hoja o como proyecto independiente. */
-function abrirLibro_() {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  return ss ? ss : SpreadsheetApp.openById(SPREADSHEET_ID);
-}
+// abrirLibro_() vive en srv-libro.js: cada usuario tiene su propia hoja.
 
 
 // ------------------------------------------------ Web App
@@ -89,7 +88,7 @@ var CACHE_TTL_SEG = 0; // 0 = desactivado (siempre fresco). p.ej. 120 para activ
 
 function invalidarCacheDatos_() {
   if (CACHE_TTL_SEG <= 0) return;
-  try { CacheService.getScriptCache().remove(CACHE_KEY_DATOS); }
+  try { CacheService.getUserCache().remove(CACHE_KEY_DATOS); }
   catch (e) { /* sin caché activo no hay nada que borrar */ }
 }
 
@@ -101,7 +100,7 @@ function invalidarCacheDatos_() {
  */
 function getDatos(forzar) {
   if (CACHE_TTL_SEG > 0) {
-    var cache = CacheService.getScriptCache();
+    var cache = CacheService.getUserCache();
     if (!forzar) {
       var guardado = cache.get(CACHE_KEY_DATOS);
       if (guardado) {

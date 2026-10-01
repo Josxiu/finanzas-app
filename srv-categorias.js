@@ -9,7 +9,7 @@
 
 /** Crea una categoría nueva (nombre único; icono y tipo sugerido opcionales). */
 function agregarCategoria(c) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -40,7 +40,7 @@ function agregarCategoria(c) {
  * y las gráficas siguen cuadrando porque nunca quedan referencias viejas.
  */
 function editarCategoria(nombreActual, cambios) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -91,7 +91,7 @@ function editarCategoria(nombreActual, cambios) {
 
 /** Elimina una categoría SOLO si ningún movimiento la usa. */
 function eliminarCategoria(nombre) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
@@ -181,7 +181,7 @@ function propagarCategoria_(ss, nombreViejo, nombreNuevo) {
  * se crea sola la primera vez, así que las hojas existentes no se tocan.
  */
 function guardarPresupuesto(categoria, tope) {
-  var lock = LockService.getScriptLock();
+  var lock = LockService.getUserLock();
   lock.waitLock(10000);
   try {
     var ss = abrirLibro_();
