@@ -79,12 +79,7 @@
 
   /* ========================================================== Vista: Panel */
   /* Cabecera: apilada en móvil, dos columnas en PC (ver el bloque de escritorio) */
-  /* En móvil: patrimonio, botones rápidos y "Este mes", en ese orden (en el
-     DOM los rápidos van al final para que en PC ocupen una fila entera abajo). */
   .panel-hero { display: flex; flex-direction: column; }
-  .panel-hero > .patrimonio { order: 1; }
-  .panel-hero > .acciones-rapidas { order: 2; }
-  .panel-hero > .tarjeta-mes { order: 3; }
   .panel-hero > .tarjeta { margin-bottom: var(--e3); }
   .patrimonio {
     background: var(--hero); color: var(--hero-texto); border-color: transparent;
@@ -100,43 +95,10 @@
   }
   .patrimonio-desglose + .patrimonio-desglose { border-top: none; padding-top: 0; margin-top: var(--e1); }
 
-  /* Botones rápidos: abren Registrar con el tipo ya elegido */
-  .acciones-rapidas { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--e2); margin-bottom: var(--e3); }
-  .accion-rapida {
-    display: flex; flex-direction: column; align-items: center; gap: var(--e2);
-    padding: var(--e3) var(--e1); border: none; border-radius: var(--radio);
-    background: var(--tarjeta); box-shadow: var(--sombra-1); cursor: pointer;
-    font: inherit; font-size: var(--t-caption); font-weight: 700; color: var(--texto);
-  }
-  .accion-rapida:active { transform: scale(.97); }
-  .ar-icono {
-    width: var(--alto-toque-min); height: var(--alto-toque-min); border-radius: var(--radio-chip);
-    display: flex; align-items: center; justify-content: center;
-  }
-  .ar-icono .ic { width: 22px; height: 22px; }
-  .ar-icono.gasto { background: color-mix(in srgb, var(--barra-sale) 16%, var(--tarjeta)); color: var(--rojo); }
-  .ar-icono.ingreso { background: color-mix(in srgb, var(--barra-entra) 16%, var(--tarjeta)); color: var(--verde); }
-  .ar-icono.transfer { background: var(--acento-suave); color: var(--acento); }
-  .ar-icono.pago { background: color-mix(in srgb, var(--dona-5) 18%, var(--tarjeta)); color: var(--dona-5); }
-
-  /* Este mes: barras de lo que entró y salió, y lo que queda */
+  /* Este mes: los 4 datos en 2x2 */
   .tarjeta-mes { display: flex; flex-direction: column; gap: var(--e3); }
   .tarjeta-mes .etiqueta-fila { margin-bottom: 0; }
-  .flujo { display: flex; flex-direction: column; gap: var(--e1b); }
-  .flujo-fila { display: flex; align-items: baseline; gap: var(--e2); font-size: var(--t-lista); }
-  .flujo-fila > span:first-child { font-weight: 600; color: var(--texto-suave); flex: 1; }
-  .flujo-fila b { font-size: var(--t-cifra-chica); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .barra { height: 10px; border-radius: var(--radio-pildora); background: var(--suave); overflow: hidden; }
-  .barra-relleno { height: 100%; width: 0; border-radius: var(--radio-pildora); transition: width .4s ease; }
-  .barra-relleno.entra { background: var(--barra-entra); }
-  .barra-relleno.sale { background: var(--barra-sale); }
-  .te-quedan {
-    display: flex; align-items: center; justify-content: space-between; gap: var(--e2);
-    padding: var(--e3) var(--e3b); border-radius: var(--radio-chip); background: var(--suave);
-  }
-  .te-quedan span { font-size: var(--t-lista); font-weight: 600; color: var(--texto-suave); }
-  .te-quedan b { font-size: var(--t-titulo); font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .tarjeta-mes .empezo b { color: var(--texto); font-variant-numeric: tabular-nums; }
+  .tarjeta-mes .proyeccion { margin-top: 0; }
 
   /* ¿En qué se fue? La cifra del centro va CORTA ("1,28M"): el agujero de la
      dona mide ~100px y un monto completo no cabe sin salirse. */
@@ -409,7 +371,6 @@
       align-items: stretch;
     }
     .panel-hero > .tarjeta { margin-bottom: var(--e3); min-width: 0; }
-    .panel-hero > .acciones-rapidas { grid-column: 1 / -1; order: 3; }
     /* Dentro del hero la tarjeta es media pantalla, así que los 4 datos van 2x2:
        en una sola fila, cifras como "$ 1.218.295,49" se parten en dos líneas. */
     .panel-hero .resumen-mes { grid-template-columns: repeat(2, 1fr); }
@@ -568,6 +529,7 @@
     /* Guardar fijo al pie del panel (como en el celular) */
     body.registro-lateral #reg-acciones {
       position: sticky; bottom: calc(-1 * var(--e4)); z-index: 2; margin: 0 calc(-1 * var(--e4));
+      align-self: stretch; /* el align-self: start de la vista Registrar en PC lo encogía */
       padding: var(--e3) var(--e4) var(--e4); background: var(--tarjeta); border-top: 1px solid var(--divisor);
     }
     body.registro-lateral #reg-acciones #btn-guardar { margin-top: 0; }

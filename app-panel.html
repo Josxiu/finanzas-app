@@ -192,13 +192,8 @@ function renderResumen() {
   // Con signo: así lo que entra y lo que sale se distinguen también sin color
   $('txt-ingresos').textContent = '+ ' + fmtBase(r.ingresos);
   $('txt-gastos').textContent = '− ' + fmtBase(r.gastos);
-  $('txt-neto').textContent = (r.neto < 0 ? '− ' : '') + fmtBase(Math.abs(r.neto));
-  $('txt-neto').className = r.neto >= 0 ? '' : 'rojo';
-  $('txt-neto-label').textContent = r.neto >= 0 ? 'Te quedan' : 'Gastaste de más';
-  // Barras comparables: la más grande de las dos llena el ancho
-  var tope = Math.max(r.ingresos, r.gastos) || 1;
-  $('barra-ingresos').style.width = Math.round(r.ingresos / tope * 100) + '%';
-  $('barra-gastos').style.width = Math.round(r.gastos / tope * 100) + '%';
+  $('txt-neto').textContent = (r.neto < 0 ? '− ' : r.neto > 0 ? '+ ' : '') + fmtBase(Math.abs(r.neto));
+  $('txt-neto').className = r.neto > 0 ? 'verde' : r.neto < 0 ? 'rojo' : '';
   var diaMes = Number(datos.hoy.substring(8, 10));
   var faltan = diasDelMes(r.mes) - diaMes;
   $('txt-dias-faltan').textContent = faltan > 0 ? 'Faltan ' + faltan + (faltan === 1 ? ' día' : ' días') : 'Último día';
@@ -838,10 +833,6 @@ function renderGraficaBarras() {
 function conectarPanel() {
   $('btn-ordenar').onclick = alternarOrden;
 
-  // Registrar rápido: abre Registrar con el tipo ya elegido
-  document.querySelectorAll('.accion-rapida').forEach(function (b) {
-    b.onclick = function () { elegirTipo(b.dataset.tipo); abrirRegistrar(); };
-  });
   $('btn-ver-analisis').onclick = function () { irA('meses'); };
   $('btn-ver-movs').onclick = function () { irA('historial'); };
 
