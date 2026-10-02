@@ -23,7 +23,6 @@ function irA(vista) {
     cuentaDetalle = null;
     if (location.hash && !hashPropio) history.replaceState(null, '', location.pathname + location.search);
   }
-  if (vista !== 'registrar') vaciarTanda(); // cada visita a Registrar empieza tanda nueva
   vistaActual = vista;
   document.querySelectorAll('.vista').forEach(function (v) { v.classList.remove('activa'); });
   $('vista-' + vista).classList.add('activa');
