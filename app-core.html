@@ -197,6 +197,107 @@ function formatearMontoEnVivo(inp, permitirNegativo) {
   inp.setSelectionRange(nuevaPos, nuevaPos);
 }
 
+/* ------------------------------------------------ Monto como calculadora
+   El monto de Registrar acepta operaciones: "12.000 + 8.500 + 3.000" se
+   guarda como UN movimiento por el total. Operadores: + − × ÷ (también se
+   aceptan - * x / escritos con el teclado). × y ÷ van antes que + y −. */
+var OPS_CALC = { '+': '+', '-': '−', '−': '−', '*': '×', 'x': '×', 'X': '×', '×': '×', '/': '÷', '÷': '÷' };
+
+/** Parte el texto en [número, op, número, …]. Un operador al final se ignora. */
+function partesExpresion(txt) {
+  var partes = [], actual = '';
+  String(txt).replace(/\s/g, '').split('').forEach(function (ch) {
+    var op = OPS_CALC[ch];
+    // Un "-" al inicio es signo, no resta (el monto igual debe dar > 0)
+    if (op && !(op === '−' && actual === '' && !partes.length)) {
+      partes.push(actual); partes.push(op); actual = '';
+    } else {
+      actual += ch;
+    }
+  });
+  partes.push(actual);
+  if (partes.length > 1 && partes[partes.length - 1] === '') partes.splice(-2, 2);
+  return partes;
+}
+
+/** ¿El texto lleva al menos una operación? */
+function esExpresion(txt) { return partesExpresion(txt).length > 1; }
+
+/** Resultado de la expresión (NaN si no se puede calcular). */
+function evaluarMonto(txt) {
+  var p = partesExpresion(txt);
+  var nums = [], ops = [];
+  for (var i = 0; i < p.length; i++) {
+    if (i % 2 === 0) {
+      var n = parsearMonto(p[i]);
+      if (isNaN(n)) return NaN;
+      nums.push(n);
+    } else {
+      ops.push(p[i]);
+    }
+  }
+  // Primero × y ÷, luego + y −
+  for (var k = 0; k < ops.length; k++) {
+    if (ops[k] === '×' || ops[k] === '÷') {
+      if (ops[k] === '÷' && nums[k + 1] === 0) return NaN;
+      nums.splice(k, 2, ops[k] === '×' ? nums[k] * nums[k + 1] : nums[k] / nums[k + 1]);
+      ops.splice(k, 1);
+      k--;
+    }
+  }
+  var total = nums[0];
+  for (var m = 0; m < ops.length; m++) total = ops[m] === '+' ? total + nums[m + 1] : total - nums[m + 1];
+  // Sin centavos fantasma de las divisiones (0,1 + 0,2…)
+  return Math.round(total * 100) / 100;
+}
+
+/** Formatea cada número de la expresión (12000+8500 -> 12.000 + 8.500). */
+function formatearExpresionEnVivo(inp) {
+  var txt = inp.value;
+  if (!/[+\-−*x×X\/÷]/.test(txt.replace(/^\s*-/, ''))) {
+    formatearMontoEnVivo(inp, false);
+    return;
+  }
+  // Mismo truco de formatearMontoEnVivo para el cursor: contar los caracteres
+  // "con significado" (dígitos, coma y operadores) que había a su izquierda.
+  var esSig = function (ch) { return /[\d,]/.test(ch) || !!OPS_CALC[ch]; };
+  var pos = inp.selectionStart, sigAntes = 0;
+  for (var i = 0; i < pos; i++) if (esSig(txt.charAt(i))) sigAntes++;
+
+  var salida = '', actual = '';
+  var cerrar = function () {
+    var limpio = actual.replace(/[^\d,]/g, '');
+    var partes = limpio.split(',');
+    var ent = partes[0].replace(/^0+(?=\d)/, '');
+    var dec = partes.length > 1 ? partes.slice(1).join('').substring(0, 2) : null;
+    var f = ent ? Number(ent).toLocaleString('es-CO') : '';
+    if (dec !== null) f = (f || '0') + ',' + dec;
+    salida += f;
+    actual = '';
+  };
+  txt.split('').forEach(function (ch) {
+    var op = OPS_CALC[ch];
+    if (op) { cerrar(); salida += ' ' + op + ' '; }
+    else actual += ch;
+  });
+  cerrar();
+  salida = salida.replace(/^\s+/, '').replace(/ ([+−×÷]) {2,}/g, ' $1 ');
+  inp.value = salida;
+
+  var nuevaPos = salida.length, vistos = 0;
+  if (sigAntes === 0) nuevaPos = 0;
+  else {
+    for (var j = 0; j < salida.length; j++) {
+      if (esSig(salida.charAt(j)) && ++vistos === sigAntes) {
+        nuevaPos = j + 1;
+        if (OPS_CALC[salida.charAt(j)] && salida.charAt(j + 1) === ' ') nuevaPos++; // tras "+ "
+        break;
+      }
+    }
+  }
+  inp.setSelectionRange(nuevaPos, nuevaPos);
+}
+
 var MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
 function nombreMes(yyyymm) {
   var p = yyyymm.split('-');

@@ -287,9 +287,8 @@ function conectarRegistrar() {
   // suelto no daría ninguna de las dos cosas.
   $('form-registrar').addEventListener('submit', function (e) {
     e.preventDefault();
-    guardar(false);
+    guardar();
   });
-  $('btn-guardar-otro').onclick = function () { guardar(true); };
 
   // Buscador de categorías (solo visible cuando hay muchas). Enter elige la
   // primera que coincide en vez de guardar el movimiento a medio llenar.
@@ -302,8 +301,9 @@ function conectarRegistrar() {
 
   // Separadores de miles mientras se escribe, y limpiar el aviso de "falta esto"
   $('inp-monto').addEventListener('input', function () {
-    formatearMontoEnVivo(this, false);
+    formatearExpresionEnVivo(this); // 12000+8500 -> 12.000 + 8.500
     limpiarError('bloque-monto');
+    actualizarResultadoMonto();
   });
   $('inp-valor-destino').addEventListener('input', function () {
     formatearMontoEnVivo(this, false);
@@ -403,47 +403,22 @@ function actualizarBloqueValorDestino() {
   }
 }
 
-function habilitarGuardar(v) {
-  $('btn-guardar').disabled = !v;
-  $('btn-guardar-otro').disabled = !v;
-}
+function habilitarGuardar(v) { $('btn-guardar').disabled = !v; }
 
-/* ------------------------------------------------------- Tanda ("agregar otro")
-   Para meter varias compras de una vez: "Guardar y agregar otro" guarda y deja
-   el formulario abierto con la misma cuenta, categoría y fecha. Lo guardado se
-   lista debajo para saber qué ya entró. La tanda se vacía al salir de Registrar. */
-var tanda = [];
+/* ---------------------------------------------------- Monto como calculadora */
 
-function renderTanda() {
-  var cont = $('lista-tanda');
-  cont.innerHTML = '';
-  $('bloque-tanda').hidden = tanda.length === 0;
-  if (!tanda.length) return;
-  $('tanda-titulo').textContent = 'Agregados ahora (' + tanda.length + ')';
-  tanda.slice().reverse().forEach(function (t) {
-    var f = document.createElement('div');
-    f.className = 'tanda-fila';
-    // textContent: categoría, cuenta y descripción vienen de la hoja o del usuario
-    var izq = document.createElement('span');
-    izq.textContent = t.categoria || t.tipo;
-    var sub = document.createElement('span');
-    sub.className = 'mini';
-    sub.textContent = t.cuenta + (t.descripcion ? ' · ' + t.descripcion : '') +
-      (t.pendiente ? ' · guardado sin conexión' : '');
-    izq.appendChild(sub);
-    var der = document.createElement('b');
-    der.textContent = fmtNativo(t.valor, monedaDe(t.cuenta));
-    f.appendChild(izq);
-    f.appendChild(der);
-    cont.appendChild(f);
-  });
-}
-
-/** Vacía la tanda (al salir de Registrar): la próxima visita empieza de cero. */
-function vaciarTanda() {
-  if (!tanda.length) return;
-  tanda = [];
-  renderTanda();
+/** Muestra el total en vivo debajo del monto cuando hay una operación. */
+function actualizarResultadoMonto() {
+  var txt = $('inp-monto').value;
+  var el = $('monto-resultado');
+  // Con operaciones la cifra va más pequeña: así cabe la cuenta entera
+  $('inp-monto').classList.toggle('es-expresion', esExpresion(txt) || /[+−×÷]\s*$/.test(txt));
+  if (!esExpresion(txt)) { el.hidden = true; el.textContent = ''; return; }
+  var v = evaluarMonto(txt);
+  el.hidden = false;
+  el.classList.toggle('invalido', !(v > 0));
+  el.textContent = (v > 0) ? '= ' + fmtNativo(v, monedaDe(cuentaSel) || monedaBase)
+    : (isNaN(v) ? 'Revisa la operación' : 'El total debe ser mayor que cero');
 }
 
 /* ------------------------------------------------------------- Validación
@@ -475,13 +450,18 @@ function limpiarErrores() {
   });
 }
 
-function guardar(seguir) {
+function guardar() {
   if ($('btn-guardar').disabled) return; // ya hay un guardado en curso
-  var valor = parsearMonto($('inp-monto').value);
+  // El monto puede ser una operación (12.000 + 8.500): se guarda el total
+  var valor = evaluarMonto($('inp-monto').value);
   var esDoble = (tipoSel === 'Transferencia' || tipoSel === 'Pago tarjeta');
 
   // Validación amable antes de ir al servidor
-  if (!(valor > 0)) return faltaCampo('bloque-monto', 'Escribe un monto mayor que cero', 'inp-monto');
+  if (!(valor > 0)) {
+    return faltaCampo('bloque-monto', esExpresion($('inp-monto').value)
+      ? 'Revisa la operación del monto: el total debe ser mayor que cero'
+      : 'Escribe un monto mayor que cero', 'inp-monto');
+  }
   if (!cuentaSel) return faltaCampo(esDoble ? 'bloque-transfer' : 'bloque-cuenta', 'Elige la cuenta');
   if (esDoble && !destinoSel) return faltaCampo('bloque-transfer', 'Elige la cuenta destino');
   if (!esDoble && !catSel) return faltaCampo('bloque-categoria', 'Elige una categoría');
@@ -511,18 +491,16 @@ function guardar(seguir) {
   };
 
   // Limpia el formulario y sale de Registrar: se usa igual si se guardó en el
-  // servidor o si quedó en la cola del teléfono. Con `seguir` (tanda) se queda
-  // en el formulario: cuenta, categoría, fecha y filtro de categorías intactos.
-  var terminar = function (pendiente) {
+  // servidor o si quedó en la cola del teléfono.
+  var terminar = function () {
     $('inp-monto').value = '';
     $('inp-desc').value = '';
     $('inp-valor-destino').value = '';
+    actualizarResultadoMonto();
     limpiarErrores();
     guardarPref('ultimaCuenta', cuentaSel); // para preseleccionarla mañana
     // En el Registro rápido lateral (PC ancho) no hay a dónde volver: se queda
-    if (seguir === true || registroLateral()) {
-      tanda.push(Object.assign({}, mov, { pendiente: !!pendiente }));
-      renderTanda();
+    if (registroLateral()) {
       $('inp-monto').focus();
       return;
     }
@@ -534,7 +512,7 @@ function guardar(seguir) {
   if (!hayRed()) {
     encolarMovimiento(mov);
     habilitarGuardar(true);
-    terminar(true);
+    terminar();
     toast('Sin conexión: guardado en el teléfono, se subirá solo', 'exito');
     return;
   }
@@ -561,7 +539,7 @@ function guardar(seguir) {
       // repetiría el error: se muestra y el usuario conserva lo que escribió.
       if (!hayRed()) {
         encolarMovimiento(mov);
-        terminar(true);
+        terminar();
         toast('Se fue la conexión: guardado en el teléfono, se subirá solo', 'exito');
       } else {
         toast(err && err.message ? err.message : 'Error de conexión', 'error');

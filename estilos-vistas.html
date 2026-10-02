@@ -25,32 +25,25 @@
   #bloque-categoria { order: 5; }
   #bloque-fecha { order: 6; }
   #reg-acciones { order: 7; }
-  #bloque-tanda { order: 8; margin-top: var(--e3); }
 
-  /* "Guardar y agregar otro" y la lista de lo que se lleva en la tanda */
-  #btn-guardar-otro { width: 100%; font-weight: 700; }
-  #btn-guardar-otro:disabled { opacity: .6; }
-  #btn-guardar-otro .txt-corto { display: none; }
-
-  /* Celular: Guardar y "Otro" lado a lado, FIJOS sobre la barra de abajo */
+  /* Celular: Guardar FIJO sobre la barra de abajo */
   @media (max-width: 899px) {
     #reg-acciones {
       position: sticky; bottom: calc(var(--alto-nav) + env(safe-area-inset-bottom)); z-index: 5;
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
       margin: 0 calc(-1 * var(--pad-tarjeta)); padding: var(--e2b) var(--pad-tarjeta);
       background: var(--fondo);
     }
-    #reg-acciones #btn-guardar { order: 2; margin-top: 0; min-height: 54px; }
-    #reg-acciones #btn-guardar-otro { order: 1; min-height: 54px; border-radius: var(--radio); }
-    #btn-guardar-otro .txt-largo { display: none; }
-    #btn-guardar-otro .txt-corto { display: inline; }
+    #reg-acciones #btn-guardar { margin-top: 0; min-height: 54px; }
   }
-  .tanda-fila {
-    display: flex; justify-content: space-between; align-items: baseline; gap: var(--e3);
-    padding: var(--e2) 0; border-top: 1px solid var(--divisor); font-size: var(--t-cuerpo);
+
+  /* Monto como calculadora: el total en vivo debajo del campo */
+  .calc-resultado {
+    margin-top: var(--e2b); padding: var(--e2) var(--e3); border-radius: var(--radio-chip);
+    background: var(--acento-suave); color: var(--acento);
+    font-size: var(--t-cifra); font-weight: 800; font-variant-numeric: tabular-nums;
   }
-  .tanda-fila:first-child { border-top: none; }
-  .tanda-fila b { white-space: nowrap; }
+  #inp-monto.es-expresion { font-size: 20px; } /* la cuenta entera a la vista; el total va debajo */
+  .calc-resultado.invalido { background: var(--aviso-fondo); color: var(--ambar-texto); font-size: var(--t-lista); font-weight: 700; }
 
   .grupo-tipos {
     display: grid; grid-template-columns: repeat(4, 1fr);
@@ -405,8 +398,7 @@
     #reg-volver   { grid-area: 1 / 1 / 2 / 3; justify-self: start; margin-bottom: var(--e2); }
     .col-form     { grid-area: 2 / 1 / 3 / 2; }
     .col-elegir   { grid-area: 2 / 2 / 5 / 3; }
-    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); display: flex; flex-direction: column; gap: var(--e2); }
-    #bloque-tanda { grid-area: 4 / 1 / 5 / 2; align-self: start; }
+    #reg-acciones { grid-area: 3 / 1 / 4 / 2; align-self: start; margin-top: var(--e1); }
 
     /* --- Panel --- */
     /* El patrimonio y "este mes" son las dos cifras que uno viene a mirar:
@@ -573,18 +565,13 @@
     body.registro-lateral #vista-registrar .btn-tipo { min-height: 56px; font-size: 11px; }
     body.registro-lateral #vista-registrar .rejilla-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     body.registro-lateral #vista-registrar .fila-doble { grid-template-columns: 1fr; }
-    /* Guardar y "Otro" fijos al pie del panel (como en el celular) */
+    /* Guardar fijo al pie del panel (como en el celular) */
     body.registro-lateral #reg-acciones {
       position: sticky; bottom: calc(-1 * var(--e4)); z-index: 2; margin: 0 calc(-1 * var(--e4));
-      display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: var(--e2b);
       padding: var(--e3) var(--e4) var(--e4); background: var(--tarjeta); border-top: 1px solid var(--divisor);
     }
-    body.registro-lateral #reg-acciones #btn-guardar { order: 2; margin-top: 0; }
-    body.registro-lateral #reg-acciones #btn-guardar-otro { order: 1; }
-    body.registro-lateral #btn-guardar-otro .txt-largo { display: none; }
-    body.registro-lateral #btn-guardar-otro .txt-corto { display: inline; }
+    body.registro-lateral #reg-acciones #btn-guardar { margin-top: 0; }
     /* Con el panel, el Inicio tiene menos ancho: el patrimonio en una línea */
     body.registro-lateral .patrimonio .valor-grande { font-size: 30px; white-space: nowrap; }
-    body.registro-lateral #bloque-tanda { background: var(--suave); padding: var(--e3); border-radius: var(--radio-chip); }
   }
 </style>
