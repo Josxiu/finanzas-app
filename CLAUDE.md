@@ -99,4 +99,7 @@ Ojo: `pkill -f "sleep 3600"` dentro del mismo comando mata al propio shell
 - v12.3: en el Inicio **no** debe haber botones rápidos (Gasto/Ingreso/Transferir/
   Pagar deuda): basta el + del centro. "Este mes" se muestra en 2x2: Empezó con
   · Ingresos / Gastos · Neto. El formato de barras "Entró/Salió" no le gustó.
+- v12.4: en el celular, cuentas y deudas se deslizan por defecto, y cada lista
+  tiene un botón "Ver todas"/"Deslizar" (se recuerda con `vista-<id lista>` en
+  localStorage). Mientras se ordena, se ven todas. En PC siempre en cuadrícula.
 - Pendiente: en las deudas, mostrar el "% pagado". El usuario dijo "luego lo miramos".

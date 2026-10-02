@@ -185,6 +185,7 @@ function renderResumen() {
   $('btn-ordenar').innerHTML = ordenando
     ? icono('check') + 'Listo'
     : icono('orden') + 'Ordenar';
+  pintarVistaListas();
 
   var r = datos.resumen.mesActual;
   $('titulo-mes').textContent = 'Este mes (' + nombreMes(r.mes) + ')';
@@ -348,6 +349,23 @@ function renderUltimos() {
   var iconos = {};
   datos.categorias.forEach(function (c) { iconos[c.categoria] = c.icono; });
   pintarMovimientos(cont, lista, iconos);
+}
+
+/**
+ * Cuentas y deudas en el celular: tira deslizable (por defecto) o todas a la
+ * vista en cuadrícula. Cada lista recuerda su modo. Al ordenar se ven todas:
+ * arrastrar dentro de una tira que se desliza es incómodo.
+ */
+function listaExpandida(id) { return leerPref('vista-' + id) === 'todas'; }
+function pintarVistaListas() {
+  document.querySelectorAll('.btn-vista-lista').forEach(function (b) {
+    var id = b.dataset.lista, todas = listaExpandida(id);
+    $(id).classList.toggle('expandida', todas || ordenando);
+    b.hidden = ordenando;
+    b.innerHTML = todas ? icono('deslizar') + 'Deslizar' : icono('panel') + 'Ver todas';
+    b.title = todas ? 'Mostrarlas en una fila que se desliza' : 'Mostrarlas todas en cuadrícula';
+    b.setAttribute('aria-pressed', todas ? 'true' : 'false');
+  });
 }
 
 function alternarOrden() {
@@ -832,6 +850,14 @@ function renderGraficaBarras() {
 /** Conecta los controles del Panel (ver conectarRegistrar en app-registrar). */
 function conectarPanel() {
   $('btn-ordenar').onclick = alternarOrden;
+  document.querySelectorAll('.btn-vista-lista').forEach(function (b) {
+    b.onclick = function () {
+      var id = b.dataset.lista;
+      guardarPref('vista-' + id, listaExpandida(id) ? 'deslizar' : 'todas');
+      $(id).scrollLeft = 0;
+      pintarVistaListas();
+    };
+  });
 
   $('btn-ver-analisis').onclick = function () { irA('meses'); };
   $('btn-ver-movs').onclick = function () { irA('historial'); };
