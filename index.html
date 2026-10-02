@@ -254,31 +254,19 @@
           <div class="patrimonio-desglose" id="txt-tasas" hidden></div>
         </div>
 
-        <!-- Este mes: lo que entró y salió como barras comparables, y lo que queda -->
+        <!-- Este mes: con cuánto empezó, lo que entró, lo que salió y el neto -->
         <div class="tarjeta tarjeta-mes">
           <div class="etiqueta-fila">
             <span class="etiqueta" id="titulo-mes">Este mes</span>
             <span class="mini" id="txt-dias-faltan"></span>
           </div>
-          <div class="flujo" title="No incluye transferencias: mover plata entre tus cuentas no es un ingreso">
-            <div class="flujo-fila"><span>Entró</span><span id="chip-ingresos-delta" class="chip-delta" hidden></span><b id="txt-ingresos" class="verde">—</b></div>
-            <div class="barra"><div class="barra-relleno entra" id="barra-ingresos"></div></div>
+          <div class="resumen-mes">
+            <div><span class="mini">Empezó con</span><b id="txt-inicio-mes">—</b></div>
+            <div title="No incluye transferencias: mover plata entre tus cuentas no es un ingreso"><span class="mini">Ingresos</span><b id="txt-ingresos" class="verde">—</b><span id="chip-ingresos-delta" class="chip-delta" hidden></span></div>
+            <div title="No incluye transferencias ni pagos de deuda: mover plata entre tus cuentas no es un gasto"><span class="mini">Gastos</span><b id="txt-gastos" class="rojo">—</b><span id="chip-gastos-delta" class="chip-delta" hidden></span></div>
+            <div><span class="mini">Neto</span><b id="txt-neto">—</b></div>
           </div>
-          <div class="flujo" title="No incluye transferencias ni pagos de deuda: mover plata entre tus cuentas no es un gasto">
-            <div class="flujo-fila"><span>Salió</span><span id="chip-gastos-delta" class="chip-delta" hidden></span><b id="txt-gastos" class="rojo">—</b></div>
-            <div class="barra"><div class="barra-relleno sale" id="barra-gastos"></div></div>
-          </div>
-          <div class="te-quedan"><span id="txt-neto-label">Te quedan</span><b id="txt-neto">—</b></div>
-          <div class="mini empezo">Empezó el mes con <b id="txt-inicio-mes">—</b></div>
           <div class="proyeccion" id="txt-proyeccion" hidden></div>
-        </div>
-
-        <!-- Registrar rápido: abre Registrar con el tipo ya elegido -->
-        <div class="acciones-rapidas" role="group" aria-label="Registrar rápido">
-          <button type="button" class="accion-rapida" data-tipo="Gasto"><span class="ar-icono gasto"><svg class="ic"><use href="#i-menos-circ"/></svg></span>Gasto</button>
-          <button type="button" class="accion-rapida" data-tipo="Ingreso"><span class="ar-icono ingreso"><svg class="ic"><use href="#i-mas-circ"/></svg></span>Ingreso</button>
-          <button type="button" class="accion-rapida" data-tipo="Transferencia"><span class="ar-icono transfer"><svg class="ic"><use href="#i-transfer"/></svg></span>Transferir</button>
-          <button type="button" class="accion-rapida" data-tipo="Pago tarjeta"><span class="ar-icono pago"><svg class="ic"><use href="#i-tarjeta-cred"/></svg></span>Pagar deuda</button>
         </div>
       </div>
 
