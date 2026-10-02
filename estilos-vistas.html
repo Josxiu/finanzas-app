@@ -36,16 +36,7 @@
     #reg-acciones #btn-guardar { margin-top: 0; min-height: 54px; }
   }
 
-  /* Monto como calculadora: + − × ÷ = debajo del campo y el total en vivo */
-  .calc-barra { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--e2); margin-top: var(--e2b); }
-  .calc-op {
-    min-height: var(--alto-toque-min); border: 1px solid var(--borde); border-radius: var(--radio-chip);
-    background: var(--suave); color: var(--texto); cursor: pointer;
-    font: inherit; font-size: 22px; font-weight: 700; line-height: 1;
-    touch-action: manipulation; -webkit-user-select: none; user-select: none;
-  }
-  .calc-op:active { transform: scale(.95); background: var(--acento-suave); color: var(--acento); }
-  .calc-op.calc-igual { background: var(--acento-suave); color: var(--acento); border-color: transparent; }
+  /* Monto como calculadora: el total en vivo debajo del campo */
   .calc-resultado {
     margin-top: var(--e2b); padding: var(--e2) var(--e3); border-radius: var(--radio-chip);
     background: var(--acento-suave); color: var(--acento);

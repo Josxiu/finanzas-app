@@ -305,12 +305,6 @@ function conectarRegistrar() {
     limpiarError('bloque-monto');
     actualizarResultadoMonto();
   });
-  // Barra + − × ÷ =: pointerdown con preventDefault para que el monto NO
-  // pierda el foco (si lo pierde, el teclado del celular se cierra).
-  document.querySelectorAll('.calc-op').forEach(function (b) {
-    b.addEventListener('pointerdown', function (e) { e.preventDefault(); });
-    b.addEventListener('click', function () { pulsarOperacion(b.dataset.op); });
-  });
   $('inp-valor-destino').addEventListener('input', function () {
     formatearMontoEnVivo(this, false);
     limpiarError('bloque-valor-destino');
@@ -425,28 +419,6 @@ function actualizarResultadoMonto() {
   el.classList.toggle('invalido', !(v > 0));
   el.textContent = (v > 0) ? '= ' + fmtNativo(v, monedaDe(cuentaSel) || monedaBase)
     : (isNaN(v) ? 'Revisa la operación' : 'El total debe ser mayor que cero');
-}
-
-/**
- * Un toque en + − × ÷ agrega el operador al final (o reemplaza el último si
- * ya había uno). "=" deja solo el total. El monto conserva el foco, así el
- * teclado del celular no se cierra entre número y número.
- */
-function pulsarOperacion(op) {
-  var inp = $('inp-monto');
-  var txt = inp.value.replace(/\s+$/, '');
-  if (op === '=') {
-    var v = evaluarMonto(txt);
-    if (v > 0) inp.value = montoATexto(v);
-  } else if (txt) {
-    if (/[+−×÷]$/.test(txt)) txt = txt.slice(0, -1).replace(/\s+$/, '');
-    inp.value = txt + ' ' + op + ' ';
-  }
-  inp.focus();
-  var fin = inp.value.length;
-  inp.setSelectionRange(fin, fin);
-  limpiarError('bloque-monto');
-  actualizarResultadoMonto();
 }
 
 /* ------------------------------------------------------------- Validación

@@ -148,20 +148,13 @@
         </div>
 
         <!-- El monto funciona como calculadora: 12.000 + 8.500 + 3.000 se guarda
-             como UN movimiento por el total. El teclado numérico del celular no
-             trae "+", por eso la barra de operaciones va justo debajo. -->
+             como UN movimiento por el total (las operaciones se escriben con el
+             teclado; el total se ve debajo). -->
         <div class="tarjeta" id="bloque-monto">
           <label class="etiqueta" for="inp-monto">Monto</label>
           <div class="campo-monto">
             <span aria-hidden="true">$</span>
             <input id="inp-monto" type="text" inputmode="decimal" placeholder="0" autocomplete="off" aria-describedby="monto-resultado">
-          </div>
-          <div class="calc-barra" role="group" aria-label="Operaciones">
-            <button type="button" class="calc-op" data-op="+" aria-label="Sumar">+</button>
-            <button type="button" class="calc-op" data-op="−" aria-label="Restar">−</button>
-            <button type="button" class="calc-op" data-op="×" aria-label="Multiplicar">×</button>
-            <button type="button" class="calc-op" data-op="÷" aria-label="Dividir">÷</button>
-            <button type="button" class="calc-op calc-igual" data-op="=" aria-label="Calcular el total">=</button>
           </div>
           <div class="calc-resultado" id="monto-resultado" aria-live="polite" hidden></div>
         </div>
