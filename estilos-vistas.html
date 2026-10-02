@@ -482,19 +482,22 @@
 
   /* ============================================ Cuentas deslizables (celular)
      En el Inicio, cuentas y deudas van en una tira que se desliza de lado:
-     se ven ~2 tarjetas y media, lo que deja claro que hay más. */
+     se ven ~2 tarjetas y media, lo que deja claro que hay más. Con "Ver todas"
+     (clase .expandida) vuelven a la cuadrícula de 2 columnas. */
+  .titulo-acciones { display: flex; gap: var(--e2); }
+  @media (min-width: 900px) { .btn-vista-lista { display: none; } } /* en PC siempre se ven todas */
   @media (max-width: 899px) {
-    #lista-cuentas, #lista-deudas {
+    #lista-cuentas:not(.expandida), #lista-deudas:not(.expandida) {
       display: flex; gap: var(--pad-fila); overflow-x: auto; scroll-snap-type: x proximity;
       scroll-padding-inline: var(--pad-tarjeta); /* el ajuste respeta el margen, no pega al borde */
       margin: 0 calc(-1 * var(--pad-tarjeta)) var(--e3); padding: var(--e0) var(--pad-tarjeta) var(--e1b);
       scrollbar-width: none; -webkit-overflow-scrolling: touch;
     }
     #lista-cuentas::-webkit-scrollbar, #lista-deudas::-webkit-scrollbar { display: none; }
-    #lista-cuentas > *, #lista-deudas > * {
+    #lista-cuentas:not(.expandida) > *, #lista-deudas:not(.expandida) > * {
       flex: none; width: 42%; min-width: 150px; max-width: 200px; scroll-snap-align: start;
     }
-    #lista-cuentas > .agregar, #lista-deudas > .agregar { width: 34%; min-width: 120px; }
+    #lista-cuentas:not(.expandida) > .agregar, #lista-deudas:not(.expandida) > .agregar { width: 34%; min-width: 120px; }
   }
 
   /* ================================= Registro rápido al lado del Inicio (PC ancho) */
