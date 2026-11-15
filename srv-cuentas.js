@@ -183,7 +183,9 @@ function reordenarCuentas(nombresEnOrden) {
     }
 
     nombresEnOrden.forEach(function (n, k) {
-      hoja.getRange(posiciones[k], 1, 1, 7).setValues([datosPorNombre[n]]);
+      // Los textos (nombre, nota...) se releyeron de la hoja sin apóstrofo: hay
+      // que reescribirlos por el helper, o un nombre que empiece por '=' se ejecutaría
+      escribirTextoPlano_(hoja.getRange(posiciones[k], 1, 1, 7), [datosPorNombre[n]]);
     });
     SpreadsheetApp.flush();
     return getDatos(true);

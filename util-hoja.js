@@ -26,27 +26,40 @@ function escribirFechaTexto_(celda, iso) {
 }
 
 /**
- * Escribe TEXTO en un rango dejando la(s) celda(s) en formato texto ('@').
+ * ¿Este texto lo trataría Sheets como fórmula? Empieza por '=', '+', '-' o '@'.
+ * Solo aplica a strings: un monto negativo que sea NÚMERO no entra aquí.
+ */
+function pareceFormula_(v) {
+  return typeof v === 'string' && /^[=+\-@]/.test(v);
+}
+
+/**
+ * Escribe TEXTO en un rango, sin que Sheets lo ejecute como fórmula.
  *
- * Sin esto, Sheets interpreta como FÓRMULA cualquier valor que empiece por '='
- * (y por '+', '-', '@' en algunos casos): una descripción "=1+1" se guardaría
- * como 2, y un "=IMPORTXML(...)" podría sacar datos de la hoja hacia afuera
- * (inyección de fórmulas). Con el formato '@' puesto ANTES del valor, el texto
- * queda literal. Mismo patrón que escribirFechaTexto_.
+ * Sin esto, un valor que empieza por '=' (y por '+', '-', '@') se evalúa: una
+ * descripción "=1+1" quedaría como 2, y un "=IMPORTXML(...)" podría sacar datos
+ * de la hoja hacia afuera (inyección de fórmulas).
  *
- * `valores` es una matriz [[...]] del tamaño del rango; los números se dejan
- * pasar tal cual (solo se fuerza formato texto en las celdas que traen string).
+ * OJO: poner solo el formato '@' NO basta. Se comprobó en vivo (2026-11-15)
+ * que setValues interpreta "=..." como fórmula aunque la celda ya tenga formato
+ * de texto ("=1+1 smoke test" quedó como #ERROR!). Por eso, además del formato,
+ * se antepone un apóstrofo a los strings peligrosos: Sheets lo oculta y
+ * getValues devuelve el texto sin él, así que el resto de la app no se entera.
+ * (escribirFechaTexto_ usa setValue con fechas ISO y no tiene este problema.)
+ *
+ * `valores` es una matriz [[...]] del tamaño del rango. Los números se dejan
+ * pasar tal cual (sin apóstrofo, para que un monto negativo siga siendo número);
+ * solo las celdas con string reciben formato texto.
  */
 function escribirTextoPlano_(rango, valores) {
-  var filas = rango.getNumRows(), cols = rango.getNumColumns();
-  for (var i = 0; i < filas; i++) {
-    for (var j = 0; j < cols; j++) {
-      if (typeof valores[i][j] === 'string' && valores[i][j] !== '') {
-        rango.getCell(i + 1, j + 1).setNumberFormat('@');
-      }
-    }
-  }
-  rango.setValues(valores);
+  var seguros = valores.map(function (fila, i) {
+    return fila.map(function (v, j) {
+      if (typeof v !== 'string' || v === '') return v;
+      rango.getCell(i + 1, j + 1).setNumberFormat('@');
+      return pareceFormula_(v) ? "'" + v : v;
+    });
+  });
+  rango.setValues(seguros);
 }
 
 /** Recorta un texto libre a `max` caracteres (un pegado accidental no ensucia la hoja). */
